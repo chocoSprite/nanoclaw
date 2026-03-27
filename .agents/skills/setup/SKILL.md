@@ -94,7 +94,7 @@ grep -q 'ONECLI_URL' .env 2>/dev/null || echo 'ONECLI_URL=http://127.0.0.1:10254
 
 Run `npx tsx setup/index.ts --step environment` and parse the status block.
 
-- If HAS_AUTH=true → WhatsApp is already configured, note for step 5
+- If HAS_AUTH=true → a channel is already configured, note for step 5
 - If HAS_REGISTERED_GROUPS=true → note existing config, offer to skip or reconfigure
 - Record APPLE_CONTAINER and DOCKER values for step 3
 
@@ -149,7 +149,7 @@ Run `npx tsx setup/index.ts --step container -- --runtime <chosen>` and parse th
 
 ## 4. Codex Authentication
 
-NanoClaw uses OneCLI to manage credentials — secrets are never stored in `.env` or exposed to containers. The OneCLI gateway injects them at request time.
+Codex authenticates via `codex login` (subscription) or an OpenAI API key. For subscription users, the host's `~/.codex/auth.json` is automatically propagated into containers at startup. API key users can optionally use OneCLI to manage credentials.
 
 First, check if authentication is already configured:
 ```bash
@@ -200,24 +200,24 @@ Ask them to let you know when done.
 ## 5. Set Up Channels
 
 AskUserQuestion (multiSelect): Which messaging channels do you want to enable?
-- WhatsApp (authenticates via QR code or pairing code)
 - Telegram (authenticates via bot token from @BotFather)
 - Slack (authenticates via Slack app with Socket Mode)
 - Discord (authenticates via Discord bot token)
+- Gmail (authenticates via GCP OAuth)
 
 **Delegate to each selected channel's own skill.** Each channel skill handles its own code installation, authentication, registration, and JID resolution. This avoids duplicating channel-specific logic and ensures JIDs are always correct.
 
 For each selected channel, invoke its skill:
 
-- **WhatsApp:** Invoke `/add-whatsapp`
 - **Telegram:** Invoke `/add-telegram`
 - **Slack:** Invoke `/add-slack`
 - **Discord:** Invoke `/add-discord`
+- **Gmail:** Invoke `/add-gmail`
 
 Each skill will:
 1. Install the channel code (via `git merge` of the skill branch)
 2. Collect credentials/tokens and write to `.env`
-3. Authenticate (WhatsApp QR/pairing, or verify token-based connection)
+3. Authenticate (verify token-based connection or OAuth)
 4. Register the chat with the correct JID format
 5. Build and verify
 
@@ -288,7 +288,7 @@ Tell user to test: send a message in their registered chat. Show: `tail -f logs/
 
 **No response to messages:** Check trigger pattern. Main channel doesn't need prefix. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`.
 
-**Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. For WhatsApp: check `store/auth/creds.json` exists. For token-based channels: check token values in `.env`. Restart the service after any `.env` change.
+**Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. For token-based channels: check token values in `.env`. Restart the service after any `.env` change.
 
 **Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
 
