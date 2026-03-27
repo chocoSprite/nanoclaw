@@ -4,6 +4,7 @@
  */
 import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -124,6 +125,21 @@ function buildVolumeMounts(
     '.codex',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
+
+  // Propagate host Codex OAuth credentials into group session directory
+  // so the Codex CLI inside the container can authenticate via codex login token.
+  // Only overwrite if host auth is newer (preserves container-refreshed tokens).
+  const hostCodexAuth = path.join(os.homedir(), '.codex', 'auth.json');
+  const groupCodexAuth = path.join(groupSessionsDir, 'auth.json');
+  if (fs.existsSync(hostCodexAuth)) {
+    const hostMtime = fs.statSync(hostCodexAuth).mtimeMs;
+    const groupMtime = fs.existsSync(groupCodexAuth)
+      ? fs.statSync(groupCodexAuth).mtimeMs
+      : 0;
+    if (hostMtime > groupMtime) {
+      fs.copyFileSync(hostCodexAuth, groupCodexAuth);
+    }
+  }
 
   // Sync skills from container/skills/ into each group's .codex/skills/
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
