@@ -84,6 +84,24 @@ git merge whatsapp/skill/local-whisper || {
 
 This modifies `src/transcription.ts` to use the `whisper-cli` binary instead of the OpenAI API.
 
+### Post-merge cleanup (Claude→Codex references)
+
+The upstream skill branch may contain Claude/Anthropic references. Clean them up:
+
+```bash
+# Find and fix stale references in merged code
+grep -rln "Claude Code\|Claude Agent SDK\|claude-agent-sdk\|CLAUDE_CODE_OAUTH_TOKEN\|ANTHROPIC_API_KEY\|api\.anthropic\.com" src/ container/ --include='*.ts' 2>/dev/null | while read f; do
+  sed -i '' \
+    -e 's/Claude Code/Codex/g' \
+    -e 's/Claude Agent SDK/Codex SDK/g' \
+    -e 's/@anthropic-ai\/claude-agent-sdk/@openai\/codex-sdk/g' \
+    -e 's/CLAUDE_CODE_OAUTH_TOKEN/OPENAI_API_KEY/g' \
+    -e 's/ANTHROPIC_API_KEY/OPENAI_API_KEY/g' \
+    -e 's/api\.anthropic\.com/api.openai.com/g' \
+    "$f"
+done
+```
+
 ### Validate
 
 ```bash

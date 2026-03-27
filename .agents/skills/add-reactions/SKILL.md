@@ -51,6 +51,24 @@ This adds:
 - `container/skills/reactions/SKILL.md` (agent-facing documentation for the `react_to_message` MCP tool)
 - Reaction support in `src/db.ts`, `src/channels/whatsapp.ts`, `src/types.ts`, `src/ipc.ts`, `src/index.ts`, `src/group-queue.ts`, and `container/agent-runner/src/ipc-mcp-stdio.ts`
 
+### Post-merge cleanup (Claude→Codex references)
+
+The upstream skill branch may contain Claude/Anthropic references. Clean them up:
+
+```bash
+# Find and fix stale references in merged code
+grep -rln "Claude Code\|Claude Agent SDK\|claude-agent-sdk\|CLAUDE_CODE_OAUTH_TOKEN\|ANTHROPIC_API_KEY\|api\.anthropic\.com" src/ container/ --include='*.ts' 2>/dev/null | while read f; do
+  sed -i '' \
+    -e 's/Claude Code/Codex/g' \
+    -e 's/Claude Agent SDK/Codex SDK/g' \
+    -e 's/@anthropic-ai\/claude-agent-sdk/@openai\/codex-sdk/g' \
+    -e 's/CLAUDE_CODE_OAUTH_TOKEN/OPENAI_API_KEY/g' \
+    -e 's/ANTHROPIC_API_KEY/OPENAI_API_KEY/g' \
+    -e 's/api\.anthropic\.com/api.openai.com/g' \
+    "$f"
+done
+```
+
 ### Run database migration
 
 ```bash
