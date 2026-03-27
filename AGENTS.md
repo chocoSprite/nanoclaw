@@ -4,7 +4,7 @@ Personal AI assistant. See [README.md](README.md) for philosophy and setup. See 
 
 ## Quick Context
 
-Single Node.js process with skill-based channel system. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) are skills that self-register at startup. Messages route to Codex SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
+Single Node.js process with skill-based channel system. Channels (Telegram, Slack, Discord, Gmail) are skills that self-register at startup. Messages route to Codex SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
 
 ## Key Files
 
@@ -89,9 +89,6 @@ systemctl --user restart nanoclaw
 ```
 
 ## Troubleshooting
-
-**WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` to install it. Existing auth credentials and groups are preserved.
-
 
 ## Container Build Cache
 
