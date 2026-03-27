@@ -8,9 +8,9 @@ NanoClaw has four types of skills overall. See [CONTRIBUTING.md](../CONTRIBUTING
 
 | Type | Location | How it works |
 |------|----------|-------------|
-| **Feature** (this doc) | `.claude/skills/` + `skill/*` branch | SKILL.md has instructions; code lives on a branch, applied via `git merge` |
-| **Utility** | `.claude/skills/<name>/` with code files | Self-contained tools; code in skill directory, copied into place on install |
-| **Operational** | `.claude/skills/` on `main` | Instruction-only workflows (setup, debug, update) |
+| **Feature** (this doc) | `.agents/skills/` + `skill/*` branch | SKILL.md has instructions; code lives on a branch, applied via `git merge` |
+| **Utility** | `.agents/skills/<name>/` with code files | Self-contained tools; code in skill directory, copied into place on install |
+| **Operational** | `.agents/skills/` on `main` | Instruction-only workflows (setup, debug, update) |
 | **Container** | `container/skills/` | Loaded inside agent containers at runtime |
 
 ---
@@ -41,7 +41,7 @@ Skills are split into two categories:
 **Operational skills** (on `main`, always available):
 - `/setup`, `/debug`, `/update-nanoclaw`, `/customize`, `/update-skills`
 - These are instruction-only SKILL.md files — no code changes, just workflows
-- Live in `.claude/skills/` on `main`, immediately available to every user
+- Live in `.agents/skills/` on `main`, immediately available to every user
 
 **Feature skills** (in marketplace, installed on demand):
 - `/add-discord`, `/add-telegram`, `/add-slack`, `/add-gmail`, etc.
@@ -85,7 +85,7 @@ NanoClaw's `.claude/settings.json` registers the official marketplace:
 }
 ```
 
-The marketplace repo uses Claude Code's plugin structure:
+The marketplace repo uses Codex's plugin structure:
 
 ```
 qwibitai/nanoclaw-skills/
@@ -219,7 +219,7 @@ A GitHub Action runs on every push to `main`:
    git clone https://github.com/<you>/nanoclaw.git
    cd nanoclaw
    ```
-3. Run Claude Code:
+3. Run Codex:
    ```bash
    claude
    ```
@@ -282,7 +282,7 @@ Custom changes, skills, and core updates all coexist on their main branch. Git h
 
 ### Applying a skill
 
-Run `/add-discord` in Claude Code (discovered via the marketplace plugin), or manually:
+Run `/add-discord` in Codex (discovered via the marketplace plugin), or manually:
 
 ```bash
 git fetch upstream skill/discord
@@ -323,7 +323,7 @@ Standard fork contribution workflow. Their custom changes stay on their main and
 
 ## Contributing a Skill
 
-The flow below is for **feature skills** (branch-based). For utility skills (self-contained tools) and container skills, the contributor opens a PR that adds files directly to `.claude/skills/<name>/` or `container/skills/<name>/` — no branch extraction needed. See [CONTRIBUTING.md](../CONTRIBUTING.md) for all skill types.
+The flow below is for **feature skills** (branch-based). For utility skills (self-contained tools) and container skills, the contributor opens a PR that adds files directly to `.agents/skills/<name>/` or `container/skills/<name>/` — no branch extraction needed. See [CONTRIBUTING.md](../CONTRIBUTING.md) for all skill types.
 
 ### Contributor flow (feature skills)
 
@@ -530,7 +530,7 @@ Migration from the old skills engine to branches is complete. All feature skills
 - All `add/`, `modify/`, `tests/`, and `manifest.yaml` from skill directories
 - `.nanoclaw/` state directory
 
-Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.claude/skills/`.
+Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.agents/skills/`.
 
 ## What Changes
 
@@ -582,7 +582,7 @@ Marketplace configuration so the official marketplace is auto-registered:
 
 ### Skills directory on main
 
-The `.claude/skills/` directory on `main` retains only operational skills (setup, debug, update-nanoclaw, customize, update-skills). Feature skills (add-discord, add-telegram, etc.) live in the marketplace repo, installed via `claude plugin install` during `/setup` or `/customize`.
+The `.agents/skills/` directory on `main` retains only operational skills (setup, debug, update-nanoclaw, customize, update-skills). Feature skills (add-discord, add-telegram, etc.) live in the marketplace repo, installed via `claude plugin install` during `/setup` or `/customize`.
 
 ### Skills engine removal
 
@@ -595,13 +595,13 @@ The following can be removed:
 - `scripts/validate-all-skills.ts`
 - `.nanoclaw/` — state directory
 - `add/` and `modify/` subdirectories from all skill directories
-- Feature skill SKILL.md files from `.claude/skills/` on main (they now live in the marketplace)
+- Feature skill SKILL.md files from `.agents/skills/` on main (they now live in the marketplace)
 
-Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.claude/skills/`.
+Operational skills (`setup`, `debug`, `update-nanoclaw`, `customize`, `update-skills`) remain on main in `.agents/skills/`.
 
 ### New infrastructure
 
-- **Marketplace repo** (`qwibitai/nanoclaw-skills`) — single Claude Code plugin bundling SKILL.md files for all feature skills
+- **Marketplace repo** (`qwibitai/nanoclaw-skills`) — single Codex plugin bundling SKILL.md files for all feature skills
 - **CI GitHub Action** — merge-forward `main` into all `skill/*` branches on every push to `main`, using Claude (Haiku) for conflict resolution
 - **`/update-skills` skill** — checks for and applies skill branch updates using git history
 - **`CONTRIBUTORS.md`** — tracks skill contributors
@@ -661,7 +661,7 @@ Users only need to re-merge a skill branch if the skill itself was updated (not 
 >
 > **If you previously applied skills via the old system**, your code changes are already in your working tree — nothing to redo. You can delete the `.nanoclaw/` directory. Future skills and updates use the branch-based approach.
 >
-> **Discovering skills:** Skills are now available through Claude Code's plugin marketplace. Run `/plugin` in Claude Code to browse and install available skills.
+> **Discovering skills:** Skills are now available through Codex's plugin marketplace. Run `/plugin` in Codex to browse and install available skills.
 
 ### For skill contributors
 

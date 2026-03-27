@@ -21,7 +21,7 @@
 
 ## Skills
 
-NanoClaw uses [Claude Code skills](https://code.claude.com/docs/en/skills) — markdown files with optional supporting files that teach Claude how to do something. There are four types of skills in NanoClaw, each serving a different purpose.
+NanoClaw uses [Codex skills](https://developers.openai.com/codex/skills) — markdown files with optional supporting files that teach the agent how to do something. There are four types of skills in NanoClaw, each serving a different purpose.
 
 ### Why skills?
 
@@ -33,28 +33,28 @@ Every user should have clean and minimal code that does exactly what they need. 
 
 Add capabilities to NanoClaw by merging a git branch. The SKILL.md contains setup instructions; the actual code lives on a `skill/*` branch.
 
-**Location:** `.claude/skills/` on `main` (instructions only), code on `skill/*` branch
+**Location:** `.agents/skills/` on `main` (instructions only), code on `skill/*` branch
 
 **Examples:** `/add-telegram`, `/add-slack`, `/add-discord`, `/add-gmail`
 
 **How they work:**
 1. User runs `/add-telegram`
-2. Claude follows the SKILL.md: fetches and merges the `skill/telegram` branch
-3. Claude walks through interactive setup (env vars, bot creation, etc.)
+2. Codex follows the SKILL.md: fetches and merges the `skill/telegram` branch
+3. Codex walks through interactive setup (env vars, bot creation, etc.)
 
 **Contributing a feature skill:**
 1. Fork `qwibitai/nanoclaw` and branch from `main`
 2. Make the code changes (new files, modified source, updated `package.json`, etc.)
-3. Add a SKILL.md in `.claude/skills/<name>/` with setup instructions — step 1 should be merging the branch
+3. Add a SKILL.md in `.agents/skills/<name>/` with setup instructions — step 1 should be merging the branch
 4. Open a PR. We'll create the `skill/<name>` branch from your work
 
 See `/add-telegram` for a good example. See [docs/skills-as-branches.md](docs/skills-as-branches.md) for the full system design.
 
 #### 2. Utility skills (with code files)
 
-Standalone tools that ship code files alongside the SKILL.md. The SKILL.md tells Claude how to install the tool; the code lives in the skill directory itself (e.g. in a `scripts/` subfolder).
+Standalone tools that ship code files alongside the SKILL.md. The SKILL.md tells Codex how to install the tool; the code lives in the skill directory itself (e.g. in a `scripts/` subfolder).
 
-**Location:** `.claude/skills/<name>/` with supporting files
+**Location:** `.agents/skills/<name>/` with supporting files
 
 **Examples:** `/claw` (Python CLI in `scripts/claw`)
 
@@ -67,9 +67,9 @@ Standalone tools that ship code files alongside the SKILL.md. The SKILL.md tells
 
 #### 3. Operational skills (instruction-only)
 
-Workflows and guides with no code changes. The SKILL.md is the entire skill — Claude follows the instructions to perform a task.
+Workflows and guides with no code changes. The SKILL.md is the entire skill — Codex follows the instructions to perform a task.
 
-**Location:** `.claude/skills/` on `main`
+**Location:** `.agents/skills/` on `main`
 
 **Examples:** `/setup`, `/debug`, `/customize`, `/update-nanoclaw`, `/update-skills`
 
@@ -80,13 +80,13 @@ Workflows and guides with no code changes. The SKILL.md is the entire skill — 
 
 #### 4. Container skills (agent runtime)
 
-Skills that run inside the agent container, not on the host. These teach the container agent how to use tools, format output, or perform tasks. They are synced into each group's `.claude/skills/` directory when a container starts.
+Skills that run inside the agent container, not on the host. These teach the container agent how to use tools, format output, or perform tasks. They are synced into each group's `.codex/skills/` directory when a container starts.
 
 **Location:** `container/skills/<name>/`
 
 **Examples:** `agent-browser` (web browsing), `capabilities` (/capabilities command), `status` (/status command), `slack-formatting` (Slack mrkdwn syntax)
 
-**Key difference:** These are NOT invoked by the user on the host. They're loaded by Claude Code inside the container and influence how the agent behaves.
+**Key difference:** These are NOT invoked by the user on the host. They're loaded by Codex inside the container and influence how the agent behaves.
 
 **Guidelines:**
 - Follow the same SKILL.md + frontmatter format
@@ -95,7 +95,7 @@ Skills that run inside the agent container, not on the host. These teach the con
 
 ### SKILL.md format
 
-All skills use the [Claude Code skills standard](https://code.claude.com/docs/en/skills):
+All skills use the [Codex skills standard](https://developers.openai.com/codex/skills):
 
 ```markdown
 ---

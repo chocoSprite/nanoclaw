@@ -12,7 +12,7 @@ Host (macOS / Windows WSL)
     │   └── Container spawner → nested Docker daemon
     └── Docker-in-Docker
         └── nanoclaw-agent containers
-            └── Claude Agent SDK
+            └── Codex SDK
 ```
 
 Each agent runs in its own container, inside a micro VM that is fully isolated from your host. Two layers of isolation: per-agent containers + the VM boundary.
@@ -195,7 +195,7 @@ bash container/build.sh
 
 ```bash
 # Apply the Telegram skill
-npx tsx scripts/apply-skill.ts .claude/skills/add-telegram
+npx tsx scripts/apply-skill.ts .agents/skills/add-telegram
 
 # Rebuild after applying the skill
 npm run build
@@ -204,7 +204,7 @@ npm run build
 cat > .env << EOF
 TELEGRAM_BOT_TOKEN=<your-token-from-botfather>
 ASSISTANT_NAME=nanoclaw
-ANTHROPIC_API_KEY=proxy-managed
+OPENAI_API_KEY=proxy-managed
 EOF
 mkdir -p data/env && cp .env data/env/env
 
@@ -235,7 +235,7 @@ Make sure you configured proxy bypass in [Step 1](#step-1-create-the-sandbox) fi
 
 ```bash
 # Apply the WhatsApp skill
-npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp
+npx tsx scripts/apply-skill.ts .agents/skills/add-whatsapp
 
 # Rebuild
 npm run build
@@ -243,7 +243,7 @@ npm run build
 # Configure .env
 cat > .env << EOF
 ASSISTANT_NAME=nanoclaw
-ANTHROPIC_API_KEY=proxy-managed
+OPENAI_API_KEY=proxy-managed
 EOF
 mkdir -p data/env && cp .env data/env/env
 
@@ -279,7 +279,7 @@ Apply both skills, patch both for proxy support, combine the `.env` variables, a
 npm start
 ```
 
-You don't need to set `ANTHROPIC_API_KEY` manually. The sandbox proxy intercepts requests and replaces `proxy-managed` with your real key automatically.
+You don't need to set `OPENAI_API_KEY` manually. The sandbox proxy intercepts requests and replaces `proxy-managed` with your real key automatically.
 
 ## Networking Details
 
@@ -288,7 +288,7 @@ You don't need to set `ANTHROPIC_API_KEY` manually. The sandbox proxy intercepts
 All traffic from the sandbox routes through the host proxy at `host.docker.internal:3128`:
 
 ```
-Agent container → DinD bridge → Sandbox VM → host.docker.internal:3128 → Host proxy → api.anthropic.com
+Agent container → DinD bridge → Sandbox VM → host.docker.internal:3128 → Host proxy → api.openai.com
 ```
 
 **"Bypass" does not mean traffic skips the proxy.** It means the proxy passes traffic through without MITM inspection. Node.js doesn't automatically use `HTTP_PROXY` env vars — you need explicit `HttpsProxyAgent` configuration in every HTTP/WebSocket client.

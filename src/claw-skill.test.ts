@@ -24,7 +24,7 @@ sleep 30
 
     const result = spawnSync(
       'python3',
-      ['.claude/skills/claw/scripts/claw', '-j', 'tg:123', 'What is 2+2?'],
+      ['.agents/skills/claw/scripts/claw', '-j', 'tg:123', 'What is 2+2?'],
       {
         cwd: process.cwd(),
         encoding: 'utf8',

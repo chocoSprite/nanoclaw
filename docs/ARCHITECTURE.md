@@ -226,7 +226,7 @@ nanoclaw/
 - 세션 ID는 SQLite에 저장
 - 컨테이너가 새 세션을 시작하면 `newSessionId`가 호스트로 전달
 - 세션 컴팩션 시 PreCompact 훅이 대화를 `conversations/` 디렉토리에 아카이브
-- Codex가 `.codex/skills/` 및 AGENTS.md를 자동 발견하여 instructions로 로드
+- Codex가 `.agents/skills/` 및 AGENTS.md를 자동 발견하여 instructions로 로드
 
 ### 4.5 스케줄링 시스템
 
