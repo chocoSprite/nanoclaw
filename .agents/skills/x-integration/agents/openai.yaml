@@ -1,4 +1,0 @@
-interface:
-  display_name: "X Integration"
-  short_description: "X (Twitter) integration for NanoClaw."
-  default_prompt: "Run /x-integration to configure X/Twitter automation."

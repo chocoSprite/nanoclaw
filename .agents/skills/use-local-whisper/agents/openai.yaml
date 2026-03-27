@@ -1,4 +1,0 @@
-interface:
-  display_name: "Use Local Whisper"
-  short_description: "Use when the user wants local voice transcription instead of OpenAI Whisper API."
-  default_prompt: "Run /use-local-whisper to enable this feature."

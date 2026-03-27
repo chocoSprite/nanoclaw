@@ -1,4 +1,0 @@
-interface:
-  display_name: "Add Macos Statusbar"
-  short_description: "Add a macOS menu bar status indicator for NanoClaw."
-  default_prompt: "Run /add-macos-statusbar to add macos-statusbar support."

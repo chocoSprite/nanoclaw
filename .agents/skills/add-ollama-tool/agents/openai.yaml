@@ -1,4 +1,0 @@
-interface:
-  display_name: "Add Ollama Tool"
-  short_description: "Add Ollama MCP server so the container agent can call local models for cheaper/f"
-  default_prompt: "Run /add-ollama-tool to add ollama-tool support."

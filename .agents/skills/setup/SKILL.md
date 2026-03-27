@@ -178,7 +178,7 @@ After login completes, verify:
 test -f ~/.codex/auth.json && echo "OK" || echo "FAILED"
 ```
 
-If the user also has OneCLI running, the credentials will be picked up automatically via the proxy. No additional OneCLI configuration needed for subscription auth.
+The host's `~/.codex/auth.json` is automatically propagated into containers at startup. No additional configuration needed for subscription auth.
 
 ### API key path
 

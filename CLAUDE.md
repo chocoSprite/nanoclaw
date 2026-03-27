@@ -41,8 +41,6 @@ Four types of skills exist in NanoClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) f
 | `/debug` | Container issues, logs, troubleshooting |
 | `/update-nanoclaw` | Bring upstream NanoClaw updates into a customized install |
 | `/init-onecli` | Install OneCLI Agent Vault and migrate `.env` credentials to it |
-| `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
-| `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
 
 ## Slash Command Mapping
 
@@ -55,15 +53,13 @@ Skills are discovered from `.agents/skills/`. Each slash command maps to a SKILL
 | `/debug` | `.agents/skills/debug/SKILL.md` |
 | `/update-nanoclaw` | `.agents/skills/update-nanoclaw/SKILL.md` |
 | `/init-onecli` | `.agents/skills/init-onecli/SKILL.md` |
-| `/add-whatsapp` | `.agents/skills/add-whatsapp/SKILL.md` |
 | `/add-telegram` | `.agents/skills/add-telegram/SKILL.md` |
 | `/add-slack` | `.agents/skills/add-slack/SKILL.md` |
 | `/add-discord` | `.agents/skills/add-discord/SKILL.md` |
 | `/add-gmail` | `.agents/skills/add-gmail/SKILL.md` |
-| `/add-emacs` | `.agents/skills/add-emacs/SKILL.md` |
 | `/claw` | `.agents/skills/claw/SKILL.md` |
 
-All other skills follow the same pattern: `/.agents/skills/<name>/SKILL.md`.
+Skills not listed above are in `.claude/skills/` (upstream originals, not yet migrated to Codex).
 
 ## Contributing
 
@@ -94,7 +90,7 @@ systemctl --user restart nanoclaw
 
 ## Troubleshooting
 
-**WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .agents/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.
+**WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` to install it. Existing auth credentials and groups are preserved.
 
 
 ## Container Build Cache
