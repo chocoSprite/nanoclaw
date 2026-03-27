@@ -87,119 +87,13 @@ export function _getStateFilePath(): string {
 }
 
 export async function startRemoteControl(
-  sender: string,
-  chatJid: string,
-  cwd: string,
+  _sender: string,
+  _chatJid: string,
+  _cwd: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
-  if (activeSession) {
-    // Verify the process is still alive
-    if (isProcessAlive(activeSession.pid)) {
-      return { ok: true, url: activeSession.url };
-    }
-    // Process died — clean up and start a new one
-    activeSession = null;
-    clearState();
-  }
-
-  // Redirect stdout/stderr to files so the process has no pipes to the parent.
-  // This prevents SIGPIPE when NanoClaw restarts.
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const stdoutFd = fs.openSync(STDOUT_FILE, 'w');
-  const stderrFd = fs.openSync(STDERR_FILE, 'w');
-
-  let proc;
-  try {
-    proc = spawn('claude', ['remote-control', '--name', 'NanoClaw Remote'], {
-      cwd,
-      stdio: ['pipe', stdoutFd, stderrFd],
-      detached: true,
-    });
-  } catch (err: any) {
-    fs.closeSync(stdoutFd);
-    fs.closeSync(stderrFd);
-    return { ok: false, error: `Failed to start: ${err.message}` };
-  }
-
-  // Auto-accept the "Enable Remote Control?" prompt
-  if (proc.stdin) {
-    proc.stdin.write('y\n');
-    proc.stdin.end();
-  }
-
-  // Close FDs in the parent — the child inherited copies
-  fs.closeSync(stdoutFd);
-  fs.closeSync(stderrFd);
-
-  // Fully detach from parent
-  proc.unref();
-
-  const pid = proc.pid;
-  if (!pid) {
-    return { ok: false, error: 'Failed to get process PID' };
-  }
-
-  // Poll the stdout file for the URL
-  return new Promise((resolve) => {
-    const startTime = Date.now();
-
-    const poll = () => {
-      // Check if process died
-      if (!isProcessAlive(pid)) {
-        resolve({ ok: false, error: 'Process exited before producing URL' });
-        return;
-      }
-
-      // Check for URL in stdout file
-      let content = '';
-      try {
-        content = fs.readFileSync(STDOUT_FILE, 'utf-8');
-      } catch {
-        // File might not have content yet
-      }
-
-      const match = content.match(URL_REGEX);
-      if (match) {
-        const session: RemoteControlSession = {
-          pid,
-          url: match[0],
-          startedBy: sender,
-          startedInChat: chatJid,
-          startedAt: new Date().toISOString(),
-        };
-        activeSession = session;
-        saveState(session);
-
-        logger.info(
-          { url: match[0], pid, sender, chatJid },
-          'Remote Control session started',
-        );
-        resolve({ ok: true, url: match[0] });
-        return;
-      }
-
-      // Timeout check
-      if (Date.now() - startTime >= URL_TIMEOUT_MS) {
-        try {
-          process.kill(-pid, 'SIGTERM');
-        } catch {
-          try {
-            process.kill(pid, 'SIGTERM');
-          } catch {
-            // already dead
-          }
-        }
-        resolve({
-          ok: false,
-          error: 'Timed out waiting for Remote Control URL',
-        });
-        return;
-      }
-
-      setTimeout(poll, URL_POLL_MS);
-    };
-
-    poll();
-  });
+  // Remote control is not available with the Codex runtime.
+  // Claude Code's `claude remote-control` has no Codex equivalent.
+  return { ok: false, error: 'Remote control is not available with the Codex runtime' };
 }
 
 export function stopRemoteControl():
