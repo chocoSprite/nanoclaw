@@ -149,23 +149,14 @@ Run `npx tsx setup/index.ts --step container -- --runtime <chosen>` and parse th
 
 ## 4. Codex Authentication
 
-Codex authenticates via `codex login` (subscription) or an OpenAI API key. For subscription users, the host's `~/.codex/auth.json` is automatically propagated into containers at startup. API key users can optionally use OneCLI to manage credentials.
+Codex authenticates via `codex login` (subscription). The host's `~/.codex/auth.json` is automatically propagated into containers at startup. Channel credentials (Telegram tokens, Slack tokens, etc.) are managed separately by OneCLI — see Step 1.
 
 First, check if authentication is already configured:
 ```bash
-codex --version 2>/dev/null && echo "CODEX_INSTALLED=true" || echo "CODEX_INSTALLED=false"
 test -f ~/.codex/auth.json && echo "CODEX_AUTH=true" || echo "CODEX_AUTH=false"
-onecli secrets list 2>/dev/null | grep -qi openai && echo "ONECLI_SECRET=true" || echo "ONECLI_SECRET=false"
 ```
 
-If either CODEX_AUTH or ONECLI_SECRET is true, confirm with user: keep or reconfigure? If keeping, skip to step 5.
-
-AskUserQuestion: How do you want to authenticate?
-
-1. **Codex subscription (recommended)** — description: "Uses your Codex Pro/Plus subscription. You'll run `codex login` to authenticate."
-2. **OpenAI API key** — description: "Pay-per-use API key from platform.openai.com."
-
-### Subscription path (recommended)
+If CODEX_AUTH is true, confirm with user: keep or reconfigure? If keeping, skip to step 5.
 
 Tell the user to run `codex login` in another terminal. This opens a browser for authentication and saves credentials to `~/.codex/auth.json`.
 
@@ -177,25 +168,6 @@ After login completes, verify:
 ```bash
 test -f ~/.codex/auth.json && echo "OK" || echo "FAILED"
 ```
-
-The host's `~/.codex/auth.json` is automatically propagated into containers at startup. No additional configuration needed for subscription auth.
-
-### API key path
-
-If the user doesn't have a key, tell them to get one from https://platform.openai.com/api-keys.
-
-Once they have the key, register it with OneCLI. AskUserQuestion with two options:
-
-1. **Dashboard** — description: "Best if you have a browser on this machine. Open http://127.0.0.1:10254 and add the secret in the UI. Use type 'api_key', name 'OpenAI', and paste your key as the value."
-2. **CLI** — description: "Best for remote/headless servers. Run: `onecli secrets create --name OpenAI --type api_key --value YOUR_KEY --host-pattern api.openai.com`"
-
-### After either path
-
-Ask them to let you know when done.
-
-**If the user's response happens to contain a key** (starts with `sk-`): handle it gracefully — run the `onecli secrets create` command with that value on their behalf.
-
-**After user confirms:** verify authentication works. For subscription: check `~/.codex/auth.json` exists. For API key: check `onecli secrets list` shows an OpenAI secret.
 
 ## 5. Set Up Channels
 
