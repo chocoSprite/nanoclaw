@@ -59,6 +59,73 @@ interface VolumeMount {
   readonly: boolean;
 }
 
+function normalizeOneCLIMounts(args: string[]): void {
+  const onecliDir = path.join(DATA_DIR, 'onecli');
+  fs.mkdirSync(onecliDir, { recursive: true });
+  const replacements = new Map<string, string>();
+  const keptArgs: string[] = [];
+  const appleContainerHost =
+    CONTAINER_RUNTIME_BIN === 'container' && os.platform() === 'darwin'
+      ? '192.168.64.1'
+      : null;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== '-v' || i === args.length - 1) {
+      keptArgs.push(args[i]);
+      continue;
+    }
+
+    const mountSpec = args[i + 1];
+    const firstColon = mountSpec.indexOf(':');
+    if (firstColon === -1) {
+      keptArgs.push(args[i], args[i + 1]);
+      i++;
+      continue;
+    }
+
+    const hostPath = mountSpec.slice(0, firstColon);
+    const remainder = mountSpec.slice(firstColon + 1);
+    const containerPath = remainder.split(':')[0];
+
+    if (
+      !hostPath.endsWith('.pem') ||
+      !containerPath.startsWith('/tmp/onecli-') ||
+      !fs.existsSync(hostPath)
+    ) {
+      keptArgs.push(args[i], args[i + 1]);
+      i++;
+      continue;
+    }
+
+    const copiedPath = path.join(onecliDir, path.basename(hostPath));
+    fs.copyFileSync(hostPath, copiedPath);
+    fs.chmodSync(copiedPath, 0o644);
+    replacements.set(
+      containerPath,
+      `/tmp/onecli-certs/${path.basename(hostPath)}`,
+    );
+    i++;
+  }
+
+  for (let i = 0; i < keptArgs.length - 1; i++) {
+    if (keptArgs[i] !== '-e') continue;
+    const [key, ...rest] = keptArgs[i + 1].split('=');
+    if (!key || rest.length === 0) continue;
+    let value = rest.join('=');
+    value = replacements.get(value) ?? value;
+    if (appleContainerHost) {
+      value = value.replaceAll('host.docker.internal', appleContainerHost);
+    }
+    keptArgs[i + 1] = `${key}=${value}`;
+  }
+
+  args.splice(0, args.length, ...keptArgs);
+
+  if (replacements.size > 0) {
+    args.push('-v', `${onecliDir}:/tmp/onecli-certs:ro`);
+  }
+}
+
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
@@ -78,17 +145,6 @@ function buildVolumeMounts(
       containerPath: '/workspace/project',
       readonly: true,
     });
-
-    // Shadow .env so the agent cannot read secrets from the mounted project root.
-    // Credentials are injected by the OneCLI gateway, never exposed to containers.
-    const envFile = path.join(projectRoot, '.env');
-    if (fs.existsSync(envFile)) {
-      mounts.push({
-        hostPath: '/dev/null',
-        containerPath: '/workspace/project/.env',
-        readonly: true,
-      });
-    }
 
     // Main also gets its group folder as the working directory
     mounts.push({
@@ -237,6 +293,7 @@ async function buildContainerArgs(
     agent: agentIdentifier,
   });
   if (onecliApplied) {
+    normalizeOneCLIMounts(args);
     logger.info({ containerName }, 'OneCLI gateway config applied');
   } else {
     logger.warn(
