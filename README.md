@@ -19,7 +19,7 @@
 
 [OpenClaw](https://github.com/openclaw/openclaw) is an impressive project, but I wouldn't have been able to sleep if I had given complex software I didn't understand full access to my life. OpenClaw has nearly half a million lines of code, 53 config files, and 70+ dependencies. Its security is at the application level (allowlists, pairing codes) rather than true OS-level isolation. Everything runs in one Node process with shared memory.
 
-NanoClaw provides that same core functionality, but in a codebase small enough to understand: one process and a handful of files. Claude agents run in their own Linux containers with filesystem isolation, not merely behind permission checks.
+NanoClaw provides that same core functionality, but in a codebase small enough to understand: one process and a handful of files. Agents run in their own Linux containers with filesystem isolation, not merely behind permission checks.
 
 ## Quick Start
 
@@ -41,7 +41,7 @@ codex
 
 Then run `/setup`. Codex handles everything: dependencies, authentication, container setup and service configuration.
 
-> **Note:** Commands prefixed with `/` (like `/setup`, `/add-whatsapp`) are [Codex skills](https://developers.openai.com/codex/skills). Type them inside the `codex` CLI prompt, not in your regular terminal. If you don't have Codex installed, get it at [openai.com/index/introducing-codex](https://openai.com/index/introducing-codex).
+> **Note:** Commands prefixed with `/` (like `/setup`, `/add-telegram`) are [Codex skills](https://developers.openai.com/codex/skills). Type them inside the `codex` CLI prompt, not in your regular terminal. If you don't have Codex installed, get it at [openai.com/index/introducing-codex](https://openai.com/index/introducing-codex).
 
 ## Philosophy
 
@@ -64,7 +64,7 @@ Then run `/setup`. Codex handles everything: dependencies, authentication, conta
 
 ## What It Supports
 
-- **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
+- **Multi-channel messaging** - Talk to your assistant from Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-telegram` or `/add-slack`. Run one or many at the same time.
 - **Isolated group context** - Each group has its own `AGENTS.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted to it.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run the agent and can message you back
@@ -163,21 +163,21 @@ Agents run in containers, not behind application-level permission checks. They c
 
 **Why no configuration files?**
 
-We don't want configuration sprawl. Every user should customize NanoClaw so that the code does exactly what they want, rather than configuring a generic system. If you prefer having config files, you can tell Claude to add them.
+We don't want configuration sprawl. Every user should customize NanoClaw so that the code does exactly what they want, rather than configuring a generic system. If you prefer having config files, you can tell Codex to add them.
 
 **Can I use third-party or open-source models?**
 
-Yes. NanoClaw supports any Claude API-compatible model endpoint. Set these environment variables in your `.env` file:
+Yes. NanoClaw supports any OpenAI API-compatible model endpoint. Set these environment variables in your `.env` file:
 
 ```bash
-ANTHROPIC_BASE_URL=https://your-api-endpoint.com
-ANTHROPIC_AUTH_TOKEN=your-token-here
+OPENAI_BASE_URL=https://your-api-endpoint.com
+OPENAI_API_KEY=your-key-here
 ```
 
 This allows you to use:
 - Local models via [Ollama](https://ollama.ai) with an API proxy
 - Open-source models hosted on [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), etc.
-- Custom model deployments with Anthropic-compatible APIs
+- Custom model deployments with OpenAI-compatible APIs
 
 Note: The model must support the OpenAI API format for best compatibility.
 
