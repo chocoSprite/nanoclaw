@@ -80,7 +80,6 @@ Container (Docker/Apple Container, 각 호출마다 생성)
 | `types.ts` | ~109 | 타입 정의. RegisteredGroup, NewMessage, ScheduledTask, Channel 인터페이스 |
 | `mount-security.ts` | ~419 | **마운트 보안**. 외부 allowlist 기반 추가 마운트 검증 |
 | `sender-allowlist.ts` | ~129 | 발신자 허용 목록. 그룹별 trigger/drop 모드 |
-| `remote-control.ts` | ~225 | 원격 제어 (no-op — Codex에 동등 기능 없음) |
 | `group-folder.ts` | ~45 | 그룹 폴더 경로 검증 (경로 탈출 방지) |
 | `env.ts` | ~43 | .env 파서 (process.env 오염 방지) |
 | `logger.ts` | ~17 | Pino 로거 + uncaught exception 핸들링 |
@@ -114,7 +113,6 @@ nanoclaw/
 │   ├── sessions/{group}/      # 그룹별 Codex 세션
 │   │   ├── .codex/            # Codex 설정 + 스킬
 │   │   └── agent-runner-src/  # 그룹별 agent-runner 복사본
-│   └── remote-control.json    # 원격 제어 상태
 ├── groups/
 │   ├── global/AGENTS.md       # 전역 메모리 (모든 그룹에 읽기 전용, CLAUDE.md fallback)
 │   ├── main/AGENTS.md         # 메인 그룹 메모리
@@ -437,7 +435,6 @@ main()
 ├── initDatabase()                  — SQLite 초기화 + 스키마 + 마이그레이션
 ├── loadState()                     — 커서, 세션, 등록 그룹 로드
 ├── ensureOneCLIAgent()             — 모든 그룹의 OneCLI 에이전트 확인
-├── restoreRemoteControl()          — 이전 원격 제어 세션 복구
 ├── 채널 연결                        — 등록된 모든 채널 순회, 크레덴셜 있는 것만 연결
 ├── startSchedulerLoop()            — 60초 폴링 시작
 ├── startIpcWatcher()               — 1초 폴링 시작
