@@ -1,15 +1,13 @@
 /**
- * X Integration - MCP Tool Definitions (Agent/Container Side)
+ * X Integration - IPC Tool Definitions (Agent/Container Side)
  *
  * These tools run inside the container and communicate with the host via IPC.
  * The host-side implementation is in host.ts.
  *
- * Note: This file is compiled in the container, not on the host.
- * The @ts-ignore is needed because the SDK is only available in the container.
+ * In the Codex runtime, these are registered as MCP tools via the nanoclaw
+ * MCP server (ipc-mcp-stdio.ts). The SKILL.md instructs how to wire them.
  */
 
-// @ts-ignore - SDK available in container environment only
-import { tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
@@ -56,188 +54,79 @@ export interface SkillToolsContext {
   isMain: boolean;
 }
 
+// Tool schemas for MCP registration
+export const xToolSchemas = {
+  x_post: {
+    description: 'Post a tweet to X (Twitter). Main group only.',
+    inputSchema: { content: z.string().max(280).describe('The tweet content (max 280 characters)') },
+  },
+  x_like: {
+    description: 'Like a tweet on X (Twitter). Main group only.',
+    inputSchema: { tweet_url: z.string().describe('The tweet URL or tweet ID') },
+  },
+  x_reply: {
+    description: 'Reply to a tweet on X (Twitter). Main group only.',
+    inputSchema: {
+      tweet_url: z.string().describe('The tweet URL or tweet ID'),
+      content: z.string().max(280).describe('The reply content (max 280 characters)'),
+    },
+  },
+  x_retweet: {
+    description: 'Retweet a tweet on X (Twitter). Main group only.',
+    inputSchema: { tweet_url: z.string().describe('The tweet URL or tweet ID') },
+  },
+  x_quote: {
+    description: 'Quote tweet on X (Twitter). Main group only.',
+    inputSchema: {
+      tweet_url: z.string().describe('The tweet URL or tweet ID'),
+      comment: z.string().max(280).describe('Your comment (max 280 characters)'),
+    },
+  },
+};
+
 /**
- * Create X integration MCP tools
+ * Create X integration tool handlers
  */
 export function createXTools(ctx: SkillToolsContext) {
   const { groupFolder, isMain } = ctx;
 
-  return [
-    tool(
-      'x_post',
-      `Post a tweet to X (Twitter). Main group only.
+  const mainOnly = () => ({ success: false, message: 'Only the main group can interact with X.' });
 
-The host machine will execute the browser automation to post the tweet.
-Make sure the content is appropriate and within X's character limit (280 chars for text).`,
-      {
-        content: z.string().max(280).describe('The tweet content to post (max 280 characters)')
-      },
-      async (args: { content: string }) => {
-        if (!isMain) {
-          return {
-            content: [{ type: 'text', text: 'Only the main group can post tweets.' }],
-            isError: true
-          };
-        }
+  return {
+    async x_post(args: { content: string }) {
+      if (!isMain) return mainOnly();
+      if (args.content.length > 280) return { success: false, message: `Tweet exceeds 280 char limit (${args.content.length})` };
+      const requestId = `xpost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      writeIpcFile(TASKS_DIR, { type: 'x_post', requestId, content: args.content, groupFolder, timestamp: new Date().toISOString() });
+      return waitForResult(requestId);
+    },
 
-        if (args.content.length > 280) {
-          return {
-            content: [{ type: 'text', text: `Tweet exceeds 280 character limit (current: ${args.content.length})` }],
-            isError: true
-          };
-        }
+    async x_like(args: { tweet_url: string }) {
+      if (!isMain) return mainOnly();
+      const requestId = `xlike-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      writeIpcFile(TASKS_DIR, { type: 'x_like', requestId, tweetUrl: args.tweet_url, groupFolder, timestamp: new Date().toISOString() });
+      return waitForResult(requestId);
+    },
 
-        const requestId = `xpost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        writeIpcFile(TASKS_DIR, {
-          type: 'x_post',
-          requestId,
-          content: args.content,
-          groupFolder,
-          timestamp: new Date().toISOString()
-        });
+    async x_reply(args: { tweet_url: string; content: string }) {
+      if (!isMain) return mainOnly();
+      const requestId = `xreply-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      writeIpcFile(TASKS_DIR, { type: 'x_reply', requestId, tweetUrl: args.tweet_url, content: args.content, groupFolder, timestamp: new Date().toISOString() });
+      return waitForResult(requestId);
+    },
 
-        const result = await waitForResult(requestId);
-        return {
-          content: [{ type: 'text', text: result.message }],
-          isError: !result.success
-        };
-      }
-    ),
+    async x_retweet(args: { tweet_url: string }) {
+      if (!isMain) return mainOnly();
+      const requestId = `xretweet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      writeIpcFile(TASKS_DIR, { type: 'x_retweet', requestId, tweetUrl: args.tweet_url, groupFolder, timestamp: new Date().toISOString() });
+      return waitForResult(requestId);
+    },
 
-    tool(
-      'x_like',
-      `Like a tweet on X (Twitter). Main group only.
-
-Provide the tweet URL or tweet ID to like.`,
-      {
-        tweet_url: z.string().describe('The tweet URL (e.g., https://x.com/user/status/123) or tweet ID')
-      },
-      async (args: { tweet_url: string }) => {
-        if (!isMain) {
-          return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
-            isError: true
-          };
-        }
-
-        const requestId = `xlike-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        writeIpcFile(TASKS_DIR, {
-          type: 'x_like',
-          requestId,
-          tweetUrl: args.tweet_url,
-          groupFolder,
-          timestamp: new Date().toISOString()
-        });
-
-        const result = await waitForResult(requestId);
-        return {
-          content: [{ type: 'text', text: result.message }],
-          isError: !result.success
-        };
-      }
-    ),
-
-    tool(
-      'x_reply',
-      `Reply to a tweet on X (Twitter). Main group only.
-
-Provide the tweet URL and your reply content.`,
-      {
-        tweet_url: z.string().describe('The tweet URL (e.g., https://x.com/user/status/123) or tweet ID'),
-        content: z.string().max(280).describe('The reply content (max 280 characters)')
-      },
-      async (args: { tweet_url: string; content: string }) => {
-        if (!isMain) {
-          return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
-            isError: true
-          };
-        }
-
-        const requestId = `xreply-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        writeIpcFile(TASKS_DIR, {
-          type: 'x_reply',
-          requestId,
-          tweetUrl: args.tweet_url,
-          content: args.content,
-          groupFolder,
-          timestamp: new Date().toISOString()
-        });
-
-        const result = await waitForResult(requestId);
-        return {
-          content: [{ type: 'text', text: result.message }],
-          isError: !result.success
-        };
-      }
-    ),
-
-    tool(
-      'x_retweet',
-      `Retweet a tweet on X (Twitter). Main group only.
-
-Provide the tweet URL to retweet.`,
-      {
-        tweet_url: z.string().describe('The tweet URL (e.g., https://x.com/user/status/123) or tweet ID')
-      },
-      async (args: { tweet_url: string }) => {
-        if (!isMain) {
-          return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
-            isError: true
-          };
-        }
-
-        const requestId = `xretweet-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        writeIpcFile(TASKS_DIR, {
-          type: 'x_retweet',
-          requestId,
-          tweetUrl: args.tweet_url,
-          groupFolder,
-          timestamp: new Date().toISOString()
-        });
-
-        const result = await waitForResult(requestId);
-        return {
-          content: [{ type: 'text', text: result.message }],
-          isError: !result.success
-        };
-      }
-    ),
-
-    tool(
-      'x_quote',
-      `Quote tweet on X (Twitter). Main group only.
-
-Retweet with your own comment added.`,
-      {
-        tweet_url: z.string().describe('The tweet URL (e.g., https://x.com/user/status/123) or tweet ID'),
-        comment: z.string().max(280).describe('Your comment for the quote tweet (max 280 characters)')
-      },
-      async (args: { tweet_url: string; comment: string }) => {
-        if (!isMain) {
-          return {
-            content: [{ type: 'text', text: 'Only the main group can interact with X.' }],
-            isError: true
-          };
-        }
-
-        const requestId = `xquote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        writeIpcFile(TASKS_DIR, {
-          type: 'x_quote',
-          requestId,
-          tweetUrl: args.tweet_url,
-          comment: args.comment,
-          groupFolder,
-          timestamp: new Date().toISOString()
-        });
-
-        const result = await waitForResult(requestId);
-        return {
-          content: [{ type: 'text', text: result.message }],
-          isError: !result.success
-        };
-      }
-    )
-  ];
+    async x_quote(args: { tweet_url: string; comment: string }) {
+      if (!isMain) return mainOnly();
+      const requestId = `xquote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      writeIpcFile(TASKS_DIR, { type: 'x_quote', requestId, tweetUrl: args.tweet_url, comment: args.comment, groupFolder, timestamp: new Date().toISOString() });
+      return waitForResult(requestId);
+    },
+  };
 }

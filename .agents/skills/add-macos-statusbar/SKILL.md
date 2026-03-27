@@ -50,7 +50,7 @@ The source lives in the skill directory. Compile it into `dist/`:
 
 ```bash
 mkdir -p dist
-swiftc -O -o dist/statusbar "${CLAUDE_SKILL_DIR}/add/src/statusbar.swift"
+swiftc -O -o dist/statusbar ".agents/skills/add-macos-statusbar/add/src/statusbar.swift"
 ```
 
 This produces a small native binary at `dist/statusbar`.

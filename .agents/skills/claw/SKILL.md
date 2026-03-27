@@ -32,7 +32,7 @@ Run this skill from within the NanoClaw directory. The script auto-detects its l
 
 ```bash
 mkdir -p scripts
-cp "${CLAUDE_SKILL_DIR}/scripts/claw" scripts/claw
+cp ".agents/skills/claw/scripts/claw" scripts/claw
 chmod +x scripts/claw
 ```
 

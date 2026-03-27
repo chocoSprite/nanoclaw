@@ -62,7 +62,7 @@ Standalone tools that ship code files alongside the SKILL.md. The SKILL.md tells
 
 **Guidelines:**
 - Put code in separate files, not inline in the SKILL.md
-- Use `${CLAUDE_SKILL_DIR}` to reference files in the skill directory
+- Use relative paths from the project root to reference files in the skill directory (e.g. `.agents/skills/<name>/scripts/...`)
 - SKILL.md contains installation instructions, usage docs, and troubleshooting
 
 #### 3. Operational skills (instruction-only)
