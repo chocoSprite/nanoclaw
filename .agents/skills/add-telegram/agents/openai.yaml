@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Telegram"
+  short_description: "Add Telegram as a channel."
+  default_prompt: "Run /add-telegram to add telegram support."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Pdf Reader"
+  short_description: "Add PDF reading to NanoClaw agents."
+  default_prompt: "Run /add-pdf-reader to add pdf-reader support."

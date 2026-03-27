@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Compact"
+  short_description: "Add /compact command for manual context compaction."
+  default_prompt: "Run /add-compact to add compact support."

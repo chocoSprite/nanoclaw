@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Whatsapp"
+  short_description: "Add WhatsApp as a channel."
+  default_prompt: "Run /add-whatsapp to add whatsapp support."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Init Onecli"
+  short_description: "Install and initialize OneCLI Agent Vault."
+  default_prompt: "Run /init-onecli to set up OneCLI Agent Vault."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Slack"
+  short_description: "Add Slack as a channel."
+  default_prompt: "Run /add-slack to add slack support."

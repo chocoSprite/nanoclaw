@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Gmail"
+  short_description: "Add Gmail integration to NanoClaw."
+  default_prompt: "Run /add-gmail to add gmail support."

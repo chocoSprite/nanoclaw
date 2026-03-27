@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Emacs"
+  short_description: "Add Emacs as a channel."
+  default_prompt: "Run /add-emacs to add emacs support."

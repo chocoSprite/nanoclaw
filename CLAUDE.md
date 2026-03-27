@@ -44,6 +44,27 @@ Four types of skills exist in NanoClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) f
 | `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
 | `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
 
+## Slash Command Mapping
+
+Skills are discovered from `.agents/skills/`. Each slash command maps to a SKILL.md:
+
+| Command | Skill Path |
+|---------|-----------|
+| `/setup` | `.agents/skills/setup/SKILL.md` |
+| `/customize` | `.agents/skills/customize/SKILL.md` |
+| `/debug` | `.agents/skills/debug/SKILL.md` |
+| `/update-nanoclaw` | `.agents/skills/update-nanoclaw/SKILL.md` |
+| `/init-onecli` | `.agents/skills/init-onecli/SKILL.md` |
+| `/add-whatsapp` | `.agents/skills/add-whatsapp/SKILL.md` |
+| `/add-telegram` | `.agents/skills/add-telegram/SKILL.md` |
+| `/add-slack` | `.agents/skills/add-slack/SKILL.md` |
+| `/add-discord` | `.agents/skills/add-discord/SKILL.md` |
+| `/add-gmail` | `.agents/skills/add-gmail/SKILL.md` |
+| `/add-emacs` | `.agents/skills/add-emacs/SKILL.md` |
+| `/claw` | `.agents/skills/claw/SKILL.md` |
+
+All other skills follow the same pattern: `/.agents/skills/<name>/SKILL.md`.
+
 ## Contributing
 
 Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, the four skill types and their guidelines, SKILL.md format rules, PR requirements, and the pre-submission checklist (searching for existing PRs/issues, testing, description format).

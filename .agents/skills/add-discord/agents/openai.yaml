@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Discord"
+  short_description: "Add Discord bot channel integration to NanoClaw."
+  default_prompt: "Run /add-discord to add discord support."

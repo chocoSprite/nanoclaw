@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use Native Credential Proxy"
+  short_description: "Replace OneCLI gateway with the built-in credential proxy."
+  default_prompt: "Run /use-native-credential-proxy to enable this feature."

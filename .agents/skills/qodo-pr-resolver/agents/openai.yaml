@@ -1,0 +1,4 @@
+interface:
+  display_name: "Qodo Pr Resolver"
+  short_description: "Review and resolve PR issues with Qodo - get AI-powered code review issues and f"
+  default_prompt: "Run /qodo-pr-resolver to review and fix Qodo PR issues."

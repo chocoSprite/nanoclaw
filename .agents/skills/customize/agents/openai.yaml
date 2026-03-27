@@ -1,0 +1,4 @@
+interface:
+  display_name: "Customize"
+  short_description: "Add new capabilities or modify NanoClaw behavior."
+  default_prompt: "Run /customize to modify NanoClaw behavior and integrations."

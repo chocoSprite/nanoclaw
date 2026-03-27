@@ -1,0 +1,4 @@
+interface:
+  display_name: "Get Qodo Rules"
+  short_description: ""Loads org- and repo-level coding rules from Qodo before code tasks begin, ensur"
+  default_prompt: "Run /get-qodo-rules to load Qodo coding rules."

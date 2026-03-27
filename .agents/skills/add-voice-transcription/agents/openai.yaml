@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Voice Transcription"
+  short_description: "Add voice message transcription to NanoClaw using OpenAI's Whisper API."
+  default_prompt: "Run /add-voice-transcription to add voice-transcription support."

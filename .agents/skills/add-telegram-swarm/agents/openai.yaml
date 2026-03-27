@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Telegram Swarm"
+  short_description: "Add Agent Swarm (Teams) support to Telegram."
+  default_prompt: "Run /add-telegram-swarm to add telegram-swarm support."

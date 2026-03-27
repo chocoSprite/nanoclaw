@@ -1,0 +1,4 @@
+interface:
+  display_name: "Channel Formatting"
+  short_description: "Convert the agent's Markdown output to each channel's native text syntax before "
+  default_prompt: "Run /channel-formatting to add channel-aware text formatting."

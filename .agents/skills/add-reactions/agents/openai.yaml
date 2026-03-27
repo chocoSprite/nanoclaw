@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Reactions"
+  short_description: "Add WhatsApp emoji reaction support — receive, send, store, and search reactions"
+  default_prompt: "Run /add-reactions to add reactions support."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Skills"
+  short_description: "Check for and apply updates to installed skill branches from upstream."
+  default_prompt: "Run /update-skills to check for skill branch updates."

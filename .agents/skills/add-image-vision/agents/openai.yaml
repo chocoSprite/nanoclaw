@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Image Vision"
+  short_description: "Add image vision to NanoClaw agents."
+  default_prompt: "Run /add-image-vision to add image-vision support."

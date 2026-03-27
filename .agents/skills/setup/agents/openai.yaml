@@ -1,0 +1,4 @@
+interface:
+  display_name: "Setup"
+  short_description: "Run initial NanoClaw setup."
+  default_prompt: "Run /setup to install, authenticate, and bootstrap NanoClaw."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Nanoclaw"
+  short_description: "Efficiently bring upstream NanoClaw updates into a customized install, with prev"
+  default_prompt: "Run /update-nanoclaw to pull upstream updates."

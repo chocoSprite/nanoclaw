@@ -1,0 +1,4 @@
+interface:
+  display_name: "Convert To Apple Container"
+  short_description: "Switch from Docker to Apple Container for macOS-native container isolation."
+  default_prompt: "Run /convert-to-apple-container to switch container runtime."

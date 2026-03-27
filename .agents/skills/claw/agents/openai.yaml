@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claw"
+  short_description: "Install the claw CLI tool — run NanoClaw agent containers from the command line "
+  default_prompt: "Run /claw to install the claw CLI tool."
