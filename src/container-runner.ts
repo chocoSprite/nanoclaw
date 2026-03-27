@@ -126,18 +126,21 @@ function buildVolumeMounts(
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
 
-  // Propagate host Codex OAuth credentials into group session directory
-  // so the Codex CLI inside the container can authenticate via codex login token.
-  // Only overwrite if host auth is newer (preserves container-refreshed tokens).
-  const hostCodexAuth = path.join(os.homedir(), '.codex', 'auth.json');
-  const groupCodexAuth = path.join(groupSessionsDir, 'auth.json');
-  if (fs.existsSync(hostCodexAuth)) {
-    const hostMtime = fs.statSync(hostCodexAuth).mtimeMs;
-    const groupMtime = fs.existsSync(groupCodexAuth)
-      ? fs.statSync(groupCodexAuth).mtimeMs
-      : 0;
-    if (hostMtime > groupMtime) {
-      fs.copyFileSync(hostCodexAuth, groupCodexAuth);
+  // Seed group session from host Codex login so subscription users don't need API keys.
+  // Copy auth.json (OAuth tokens) and config.toml (model/MCP settings).
+  // Only overwrite if host file is newer (preserves container-refreshed tokens).
+  const hostCodexDir = path.join(os.homedir(), '.codex');
+  for (const file of ['auth.json', 'config.toml']) {
+    const hostFile = path.join(hostCodexDir, file);
+    const groupFile = path.join(groupSessionsDir, file);
+    if (fs.existsSync(hostFile)) {
+      const hostMtime = fs.statSync(hostFile).mtimeMs;
+      const groupMtime = fs.existsSync(groupFile)
+        ? fs.statSync(groupFile).mtimeMs
+        : 0;
+      if (hostMtime > groupMtime) {
+        fs.copyFileSync(hostFile, groupFile);
+      }
     }
   }
 
