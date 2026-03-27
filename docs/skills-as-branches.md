@@ -70,7 +70,7 @@ Dependent skills (e.g., `telegram-swarm` depends on `telegram`) are only offered
 
 ### Marketplace configuration
 
-NanoClaw's `.claude/settings.json` registers the official marketplace:
+NanoClaw's `.codex/settings.json` registers the official marketplace:
 
 ```json
 {

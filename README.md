@@ -67,7 +67,7 @@ Then run `/setup`. Codex handles everything: dependencies, authentication, conta
 - **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
 - **Isolated group context** - Each group has its own `AGENTS.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted to it.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
-- **Scheduled tasks** - Recurring jobs that run Claude and can message you back
+- **Scheduled tasks** - Recurring jobs that run the agent and can message you back
 - **Web access** - Search and fetch content from the Web
 - **Container isolation** - Agents are sandboxed in Docker (macOS/Linux), [Docker Sandboxes](docs/docker-sandboxes.md) (micro VM isolation), or Apple Container (macOS)
 - **Credential security** - Agents never hold raw API keys. Outbound requests route through [OneCLI's Agent Vault](https://github.com/onecli/onecli), which injects credentials at request time and enforces per-agent policies and rate limits.
@@ -179,7 +179,7 @@ This allows you to use:
 - Open-source models hosted on [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), etc.
 - Custom model deployments with Anthropic-compatible APIs
 
-Note: The model must support the Anthropic API format for best compatibility.
+Note: The model must support the OpenAI API format for best compatibility.
 
 **How do I debug issues?**
 
