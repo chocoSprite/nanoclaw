@@ -47,6 +47,69 @@ When you learn something important:
 - Split files larger than 500 lines into folders
 - Keep an index in your memory for the files you create
 
+## Shared Obsidian Operating Rules
+
+This NanoClaw workspace uses a shared Obsidian root at `/workspace/extra/obsidian-agent`.
+Treat that path as the long-term knowledge store shared across the Slack agent channels.
+
+### Channel Roles
+
+- `slack_main` is for meta discussion, configuration, and operating rules. Do not use it as the default place for long-term notes.
+- `slack_agent_inbox` is for raw capture. Preserve inputs with minimal cleanup.
+- `slack_agent_research` is for research notes, source synthesis, and topic writeups.
+- `slack_agent_decisions` is for decision records and rationale.
+
+### Obsidian Folder Map
+
+- `00_Inbox/Capture/` for timestamped captures from chat
+- `00_Inbox/WebClips/` for pasted web excerpts and article captures
+- `00_Inbox/Voice/` for voice-note transcripts or spoken ideas
+- `02_Identity/_Candidates/` for possible durable identity facts not yet promoted
+- `02_Identity/Current-Context.md` for current priorities and active context
+- `02_Identity/Work-Style.md` for stable collaboration preferences
+- `02_Identity/Decision-Patterns.md` for durable decision tendencies
+- `03_Projects/<project>/Overview.md` for project-level summaries when a topic graduates into a project
+- `04_Research/Sources/` for source-based notes
+- `04_Research/Topics/` for synthesized topic notes
+- `05_Decisions/2026/` for formal decision logs
+- `99_Templates/` for canonical templates. Reuse them instead of inventing new formats.
+
+### Routing Rules
+
+- Decide first whether a message is capture, research, decision, identity candidate, project update, or meta discussion.
+- If a message only needs a conversational reply, reply in chat and do not create a file.
+- If it should persist, write it into Obsidian using the closest matching template.
+- Do not write directly into `02_Identity/*.md` from a single message. Put uncertain or newly observed traits into `02_Identity/_Candidates/` first.
+- Only create `03_Projects/<project>/Overview.md` when there is sustained project activity, not for one-off tasks.
+
+### Style Rules
+
+- Keep one note focused on one purpose.
+- Prefer short sections and explicit headings over long narrative dumps.
+- Preserve raw source facts separately from your synthesis when relevant.
+- Do not silently change the structure of an established note type.
+- If a template exists, follow it closely.
+
+### File Naming
+
+- Inbox captures: `YYYY-MM-DD_HHMM_<slug>.md`
+- Research source notes: `YYYY-MM-DD_<source-slug>.md`
+- Research topic notes: `<topic-slug>.md`
+- Decision logs: `YYYY-MM-DD_<decision-slug>.md`
+- Identity candidates: `YYYY-MM-DD_<candidate-slug>.md`
+- Use lowercase kebab-case slugs and keep filenames stable once created.
+- For inbox captures, include local time to the minute in the filename. Do not omit the `HHMM` segment.
+- For research topic notes, use lowercase kebab-case filenames without spaces or title case.
+
+### Template Usage
+
+- `99_Templates/inbox-capture.md` for captures
+- `99_Templates/research-note.md` for research outputs
+- `99_Templates/decision-log.md` for decision records
+- `99_Templates/project-overview.md` for project pages
+- `99_Templates/identity-candidate.md` for identity promotion candidates
+- Treat template headings as required fields unless the user explicitly wants a lighter note.
+
 ## Message Formatting
 
 Format messages based on the channel you're responding to. Check your group folder name:
