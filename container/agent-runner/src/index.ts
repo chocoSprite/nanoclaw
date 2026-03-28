@@ -67,29 +67,25 @@ function log(message: string): void {
 }
 
 /**
- * Build instructions from AGENTS.md (with CLAUDE.md fallback).
+ * Build instructions from AGENTS.md.
  * Non-main groups also get global instructions.
  */
 function buildInstructions(containerInput: ContainerInput): string {
   const parts: string[] = [];
 
   // Group-level instructions
-  for (const name of ['AGENTS.md', 'CLAUDE.md']) {
-    const p = `/workspace/group/${name}`;
+  {
+    const p = '/workspace/group/AGENTS.md';
     if (fs.existsSync(p)) {
       parts.push(fs.readFileSync(p, 'utf-8'));
-      break;
     }
   }
 
   // Global instructions (non-main only)
   if (!containerInput.isMain) {
-    for (const name of ['AGENTS.md', 'CLAUDE.md']) {
-      const p = `/workspace/global/${name}`;
-      if (fs.existsSync(p)) {
-        parts.push(fs.readFileSync(p, 'utf-8'));
-        break;
-      }
+    const p = '/workspace/global/AGENTS.md';
+    if (fs.existsSync(p)) {
+      parts.push(fs.readFileSync(p, 'utf-8'));
     }
   }
 
@@ -378,7 +374,7 @@ async function main(): Promise<void> {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
 
-  // Build instructions from AGENTS.md / CLAUDE.md
+  // Build instructions from AGENTS.md
   const instructions = buildInstructions(containerInput);
 
   // Initialize Codex with MCP server and instructions

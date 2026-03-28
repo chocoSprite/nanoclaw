@@ -114,7 +114,7 @@ nanoclaw/
 │   │   ├── .codex/            # Codex 설정 + 스킬
 │   │   └── agent-runner-src/  # 그룹별 agent-runner 복사본
 ├── groups/
-│   ├── global/AGENTS.md       # 전역 메모리 (모든 그룹에 읽기 전용, CLAUDE.md fallback)
+│   ├── global/AGENTS.md       # 전역 메모리 (모든 그룹에 읽기 전용)
 │   ├── main/AGENTS.md         # 메인 그룹 메모리
 │   └── {group-name}/
 │       ├── AGENTS.md          # 그룹별 메모리
