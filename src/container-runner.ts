@@ -2,8 +2,9 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in containers and handles IPC
  */
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 import {
@@ -58,6 +59,81 @@ interface VolumeMount {
   readonly: boolean;
 }
 
+/**
+ * Normalize OneCLI cert file mounts for Apple Container compatibility.
+ * Apple Container (VirtioFS) only supports directory mounts, not file mounts.
+ * OneCLI creates temp .pem cert files and mounts them individually — this
+ * copies them into a single directory and replaces file mounts with one
+ * directory mount.
+ * Also fixes host.docker.internal → 192.168.64.1 for Apple Container networking.
+ */
+function normalizeOneCLIMounts(args: string[]): void {
+  const onecliDir = path.join(DATA_DIR, 'onecli');
+  fs.mkdirSync(onecliDir, { recursive: true });
+  const replacements = new Map<string, string>();
+  const keptArgs: string[] = [];
+  const appleContainerHost =
+    CONTAINER_RUNTIME_BIN === 'container' && os.platform() === 'darwin'
+      ? '192.168.64.1'
+      : null;
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== '-v' || i === args.length - 1) {
+      keptArgs.push(args[i]);
+      continue;
+    }
+
+    const mountSpec = args[i + 1];
+    const firstColon = mountSpec.indexOf(':');
+    if (firstColon === -1) {
+      keptArgs.push(args[i], args[i + 1]);
+      i++;
+      continue;
+    }
+
+    const hostPath = mountSpec.slice(0, firstColon);
+    const remainder = mountSpec.slice(firstColon + 1);
+    const containerPath = remainder.split(':')[0];
+
+    if (
+      !hostPath.endsWith('.pem') ||
+      !containerPath.startsWith('/tmp/onecli-') ||
+      !fs.existsSync(hostPath)
+    ) {
+      keptArgs.push(args[i], args[i + 1]);
+      i++;
+      continue;
+    }
+
+    const copiedPath = path.join(onecliDir, path.basename(hostPath));
+    fs.copyFileSync(hostPath, copiedPath);
+    fs.chmodSync(copiedPath, 0o644);
+    replacements.set(
+      containerPath,
+      `/tmp/onecli-certs/${path.basename(hostPath)}`,
+    );
+    i++;
+  }
+
+  for (let i = 0; i < keptArgs.length - 1; i++) {
+    if (keptArgs[i] !== '-e') continue;
+    const [key, ...rest] = keptArgs[i + 1].split('=');
+    if (!key || rest.length === 0) continue;
+    let value = rest.join('=');
+    value = replacements.get(value) ?? value;
+    if (appleContainerHost) {
+      value = value.replaceAll('host.docker.internal', appleContainerHost);
+    }
+    keptArgs[i + 1] = `${key}=${value}`;
+  }
+
+  args.splice(0, args.length, ...keptArgs);
+
+  if (replacements.size > 0) {
+    args.push('-v', `${onecliDir}:/tmp/onecli-certs:ro`);
+  }
+}
+
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
@@ -68,7 +144,7 @@ function buildVolumeMounts(
 
   if (isMain) {
     // Main gets the project root read-only. Writable paths the agent needs
-    // (group folder, IPC, .claude/) are mounted separately below.
+    // (group folder, IPC, .codex/) are mounted separately below.
     // Read-only prevents the agent from modifying host application code
     // (src/, dist/, package.json, etc.) which would bypass the sandbox
     // entirely on next restart.
@@ -78,16 +154,9 @@ function buildVolumeMounts(
       readonly: true,
     });
 
-    // Shadow .env so the agent cannot read secrets from the mounted project root.
-    // Credentials are injected by the OneCLI gateway, never exposed to containers.
-    const envFile = path.join(projectRoot, '.env');
-    if (fs.existsSync(envFile)) {
-      mounts.push({
-        hostPath: '/dev/null',
-        containerPath: '/workspace/project/.env',
-        readonly: true,
-      });
-    }
+    // .env shadow is handled by the container entrypoint via mount --bind
+    // (Apple Container only supports directory mounts, not file mounts,
+    // so we can't shadow .env with a /dev/null file mount here)
 
     // Main also gets its group folder as the working directory
     mounts.push({
@@ -115,40 +184,35 @@ function buildVolumeMounts(
     }
   }
 
-  // Per-group Claude sessions directory (isolated from other groups)
-  // Each group gets their own .claude/ to prevent cross-group session access
+  // Per-group Codex sessions directory (isolated from other groups)
+  // Each group gets their own .codex/ to prevent cross-group session access
   const groupSessionsDir = path.join(
     DATA_DIR,
     'sessions',
     group.folder,
-    '.claude',
+    '.codex',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
-  const settingsFile = path.join(groupSessionsDir, 'settings.json');
-  if (!fs.existsSync(settingsFile)) {
-    fs.writeFileSync(
-      settingsFile,
-      JSON.stringify(
-        {
-          env: {
-            // Enable agent swarms (subagent orchestration)
-            // https://code.claude.com/docs/en/agent-teams#orchestrate-teams-of-claude-code-sessions
-            CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-            // Load CLAUDE.md from additional mounted directories
-            // https://code.claude.com/docs/en/memory#load-memory-from-additional-directories
-            CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-            // Enable Claude's memory feature (persists user preferences between sessions)
-            // https://code.claude.com/docs/en/memory#manage-auto-memory
-            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-          },
-        },
-        null,
-        2,
-      ) + '\n',
-    );
+
+  // Seed group session from host Codex login so subscription users don't need API keys.
+  // Copy auth.json (OAuth tokens) and config.toml (model/MCP settings).
+  // Only overwrite if host file is newer (preserves container-refreshed tokens).
+  const hostCodexDir = path.join(os.homedir(), '.codex');
+  for (const file of ['auth.json', 'config.toml']) {
+    const hostFile = path.join(hostCodexDir, file);
+    const groupFile = path.join(groupSessionsDir, file);
+    if (fs.existsSync(hostFile)) {
+      const hostMtime = fs.statSync(hostFile).mtimeMs;
+      const groupMtime = fs.existsSync(groupFile)
+        ? fs.statSync(groupFile).mtimeMs
+        : 0;
+      if (hostMtime > groupMtime) {
+        fs.copyFileSync(hostFile, groupFile);
+      }
+    }
   }
 
-  // Sync skills from container/skills/ into each group's .claude/skills/
+  // Sync skills from container/skills/ into each group's .codex/skills/
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
   const skillsDst = path.join(groupSessionsDir, 'skills');
   if (fs.existsSync(skillsSrc)) {
@@ -161,7 +225,7 @@ function buildVolumeMounts(
   }
   mounts.push({
     hostPath: groupSessionsDir,
-    containerPath: '/home/node/.claude',
+    containerPath: '/home/node/.codex',
     readonly: false,
   });
 
@@ -226,6 +290,7 @@ function buildVolumeMounts(
 async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
+  isMain: boolean,
   agentIdentifier?: string,
 ): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
@@ -240,6 +305,7 @@ async function buildContainerArgs(
     agent: agentIdentifier,
   });
   if (onecliApplied) {
+    normalizeOneCLIMounts(args);
     logger.info({ containerName }, 'OneCLI gateway config applied');
   } else {
     logger.warn(
@@ -257,7 +323,14 @@ async function buildContainerArgs(
   const hostUid = process.getuid?.();
   const hostGid = process.getgid?.();
   if (hostUid != null && hostUid !== 0 && hostUid !== 1000) {
-    args.push('--user', `${hostUid}:${hostGid}`);
+    if (isMain) {
+      // Main containers start as root so the entrypoint can mount --bind
+      // to shadow .env. Privileges are dropped via setpriv in entrypoint.sh.
+      args.push('-e', `RUN_UID=${hostUid}`);
+      args.push('-e', `RUN_GID=${hostGid}`);
+    } else {
+      args.push('--user', `${hostUid}:${hostGid}`);
+    }
     args.push('-e', 'HOME=/home/node');
   }
 
@@ -295,6 +368,7 @@ export async function runContainerAgent(
   const containerArgs = await buildContainerArgs(
     mounts,
     containerName,
+    input.isMain,
     agentIdentifier,
   );
 
@@ -431,15 +505,15 @@ export async function runContainerAgent(
         { group: group.name, containerName },
         'Container timeout, stopping gracefully',
       );
-      try {
-        stopContainer(containerName);
-      } catch (err) {
-        logger.warn(
-          { group: group.name, containerName, err },
-          'Graceful stop failed, force killing',
-        );
-        container.kill('SIGKILL');
-      }
+      exec(stopContainer(containerName), { timeout: 15000 }, (err) => {
+        if (err) {
+          logger.warn(
+            { group: group.name, containerName, err },
+            'Graceful stop failed, force killing',
+          );
+          container.kill('SIGKILL');
+        }
+      });
     };
 
     let timeout = setTimeout(killOnTimeout, timeoutMs);
