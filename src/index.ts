@@ -19,6 +19,7 @@ import {
   getChannelFactory,
   getRegisteredChannelNames,
 } from './channels/registry.js';
+import { getCodexUsageSummary } from './codex-usage.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -613,11 +614,121 @@ async function main(): Promise<void> {
     }
   }
 
+  // Handle "랩대시보드" — respond with host-side status snapshot, no container
+  async function handleLabDashboard(chatJid: string): Promise<void> {
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+
+    const now = new Date();
+    const ts = now.toLocaleString('ko-KR', { timeZone: TIMEZONE });
+
+    // Registered groups
+    const groups = Object.entries(registeredGroups);
+    const queueStatuses = queue.getStatuses();
+    const statusMap = new Map(queueStatuses.map((s) => [s.jid, s]));
+
+    const groupLines = groups.map(([jid, g]) => {
+      const qs = statusMap.get(jid);
+      let icon = ':white_circle:';
+      let detail = '유휴';
+      if (qs?.active) {
+        icon = qs.isTask ? ':large_orange_circle:' : ':large_green_circle:';
+        detail = qs.isTask ? `태스크 실행 중` : '에이전트 실행 중';
+        if (qs.idleWaiting) {
+          icon = ':large_blue_circle:';
+          detail = 'idle 대기';
+        }
+      }
+      const pending: string[] = [];
+      if (qs?.pendingMessages) pending.push('메시지 대기');
+      if (qs && qs.pendingTaskCount > 0)
+        pending.push(`태스크 ${qs.pendingTaskCount}개 대기`);
+      const suffix = pending.length > 0 ? ` (${pending.join(', ')})` : '';
+      const mainTag = g.isMain ? ' :star:' : '';
+      return `${icon} *${g.name}*${mainTag} — ${detail}${suffix}`;
+    });
+
+    // Scheduled tasks
+    const tasks = getAllTasks();
+    const active = tasks.filter((t) => t.status === 'active');
+    const paused = tasks.filter((t) => t.status === 'paused');
+    const upcoming = active
+      .filter((t) => t.next_run)
+      .sort((a, b) => a.next_run!.localeCompare(b.next_run!))
+      .slice(0, 5);
+
+    const taskLines = upcoming.map((t) => {
+      const nextRun = t.next_run
+        ? new Date(t.next_run).toLocaleString('ko-KR', { timeZone: TIMEZONE })
+        : '—';
+      const label = t.prompt.length > 40 ? t.prompt.slice(0, 40) + '…' : t.prompt;
+      return `• ${label} → ${nextRun}`;
+    });
+
+    // Sessions
+    const sessionCount = Object.keys(sessions).length;
+
+    // Active containers
+    const activeContainers = queue.activeContainerCount;
+
+    // Codex usage (fetch in parallel while building the rest)
+    const usagePromise = getCodexUsageSummary();
+
+    // Build message (Slack mrkdwn)
+    const lines = [
+      `:bar_chart: *랩 대시보드* — ${ts}`,
+      '',
+      `*채널* (${groups.length}개)`,
+      ...groupLines,
+      '',
+      `:gear: *컨테이너* ${activeContainers}개 실행 중 | *세션* ${sessionCount}개`,
+    ];
+
+    // Codex usage section
+    const usage = await usagePromise;
+    if (usage) {
+      const bar = (pct: number) => {
+        const filled = Math.max(0, Math.min(5, Math.round(pct / 20)));
+        return '\u2588'.repeat(filled) + '\u2591'.repeat(5 - filled);
+      };
+      lines.push('');
+      lines.push(':chart_with_upwards_trend: *Codex 사용량*');
+      lines.push(
+        `5h  \`${bar(usage.h5pct)}\` ${usage.h5pct}%${usage.h5reset ? ` (리셋 ${usage.h5reset})` : ''}`,
+      );
+      lines.push(
+        `7d  \`${bar(usage.d7pct)}\` ${usage.d7pct}%${usage.d7reset ? ` (리셋 ${usage.d7reset})` : ''}`,
+      );
+    } else {
+      lines.push('');
+      lines.push(':chart_with_upwards_trend: *Codex 사용량* — 조회 실패');
+    }
+
+    lines.push('');
+    lines.push(
+      `:calendar: *스케줄 작업* — 활성 ${active.length} / 일시정지 ${paused.length} / 전체 ${tasks.length}`,
+    );
+    if (taskLines.length > 0) {
+      lines.push('다음 실행 예정:');
+      lines.push(...taskLines);
+    }
+
+    await channel.sendMessage(chatJid, lines.join('\n'));
+  }
+
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
-      // Remote control commands — intercept before storage
+      // Lab dashboard — intercept before storage, main group only
       const trimmed = msg.content.trim();
+      if (trimmed === '랩대시보드' && registeredGroups[chatJid]?.isMain) {
+        handleLabDashboard(chatJid).catch((err) =>
+          logger.error({ err, chatJid }, 'Lab dashboard error'),
+        );
+        return;
+      }
+
+      // Remote control commands — intercept before storage
       if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
         handleRemoteControl(trimmed, chatJid, msg).catch((err) =>
           logger.error({ err, chatJid }, 'Remote control command error'),

@@ -344,6 +344,35 @@ export class GroupQueue {
     }
   }
 
+  /** Return a snapshot of every tracked group's status. */
+  getStatuses(): Array<{
+    jid: string;
+    active: boolean;
+    idleWaiting: boolean;
+    isTask: boolean;
+    pendingMessages: boolean;
+    pendingTaskCount: number;
+    runningTaskId: string | null;
+  }> {
+    const out: ReturnType<GroupQueue['getStatuses']> = [];
+    for (const [jid, s] of this.groups) {
+      out.push({
+        jid,
+        active: s.active,
+        idleWaiting: s.idleWaiting,
+        isTask: s.isTaskContainer,
+        pendingMessages: s.pendingMessages,
+        pendingTaskCount: s.pendingTasks.length,
+        runningTaskId: s.runningTaskId,
+      });
+    }
+    return out;
+  }
+
+  get activeContainerCount(): number {
+    return this.activeCount;
+  }
+
   async shutdown(_gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 
