@@ -433,8 +433,12 @@ async function main(): Promise<void> {
   // Clean up stale _close sentinel from previous container runs
   try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
 
-  // Build initial prompt (drain any pending IPC messages too)
-  let prompt = containerInput.prompt;
+  // Build initial prompt: prepend CLAUDE.md instructions so Codex treats them
+  // as part of the first user turn (config.instructions is not applied as a
+  // system prompt by the Codex CLI).
+  let prompt = instructions
+    ? `[SYSTEM INSTRUCTIONS — follow these as your core directives]\n\n${instructions}\n\n[END SYSTEM INSTRUCTIONS]\n\n${containerInput.prompt}`
+    : containerInput.prompt;
   if (containerInput.isScheduledTask) {
     prompt = `[SCHEDULED TASK - The following message was sent automatically and is not coming directly from the user or group.]\n\n${prompt}`;
   }
