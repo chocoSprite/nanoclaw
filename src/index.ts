@@ -661,7 +661,8 @@ async function main(): Promise<void> {
       const nextRun = t.next_run
         ? new Date(t.next_run).toLocaleString('ko-KR', { timeZone: TIMEZONE })
         : '—';
-      const label = t.prompt.length > 40 ? t.prompt.slice(0, 40) + '…' : t.prompt;
+      const label =
+        t.prompt.length > 40 ? t.prompt.slice(0, 40) + '…' : t.prompt;
       return `• ${label} → ${nextRun}`;
     });
 

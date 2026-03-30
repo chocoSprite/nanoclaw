@@ -59,6 +59,10 @@ interface VolumeMount {
   readonly: boolean;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Normalize OneCLI cert file mounts for Apple Container compatibility.
  * Apple Container (VirtioFS) only supports directory mounts, not file mounts.
@@ -274,6 +278,15 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Mount attachments directory so agent can access downloaded images
+  const attachmentsDir = path.join(DATA_DIR, 'attachments');
+  fs.mkdirSync(attachmentsDir, { recursive: true });
+  mounts.push({
+    hostPath: attachmentsDir,
+    containerPath: '/workspace/attachments',
+    readonly: true,
+  });
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(
@@ -410,7 +423,16 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    container.stdin.write(JSON.stringify(input));
+    // Rewrite host attachment paths to container paths so agent can access images
+    const attachmentsHostDir = path.join(DATA_DIR, 'attachments');
+    const remappedInput = {
+      ...input,
+      prompt: input.prompt.replace(
+        new RegExp(escapeRegExp(attachmentsHostDir), 'g'),
+        '/workspace/attachments',
+      ),
+    };
+    container.stdin.write(JSON.stringify(remappedInput));
     container.stdin.end();
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
@@ -453,6 +475,16 @@ export async function runContainerAgent(
             const parsed: ContainerOutput = JSON.parse(jsonStr);
             if (parsed.newSessionId) {
               newSessionId = parsed.newSessionId;
+            }
+            // Remap container paths back to host paths in agent output
+            if (parsed.result) {
+              const groupHostDir = resolveGroupFolderPath(group.folder);
+              parsed.result = parsed.result
+                .replace(/\/workspace\/group\//g, `${groupHostDir}/`)
+                .replace(
+                  /\/workspace\/attachments\//g,
+                  `${attachmentsHostDir}/`,
+                );
             }
             hadStreamingOutput = true;
             // Activity detected — reset the hard timeout
