@@ -13,6 +13,11 @@ import { DATA_DIR } from '../config.js';
 import { updateChatName } from '../db.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
+import {
+  isAudioMimetype,
+  isWhisperAvailable,
+  transcribeAudio,
+} from '../transcribe.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -101,7 +106,11 @@ export class SlackChannel implements Channel {
       const eventFiles = (event as { files?: unknown[] }).files;
       if (eventFiles?.length) {
         logger.info(
-          { subtype, fileCount: eventFiles.length, hasText: !!(event as { text?: string }).text },
+          {
+            subtype,
+            fileCount: eventFiles.length,
+            hasText: !!(event as { text?: string }).text,
+          },
           'Slack message with files received',
         );
       }
@@ -155,20 +164,26 @@ export class SlackChannel implements Channel {
         }
       }
 
-      // Download image attachments and append [Image: /path] tags
+      // Download file attachments (images + audio) and append tags
       // Use eventFiles from the raw event — TypeScript union types may
       // strip the files field depending on which branch is narrowed.
       if (eventFiles && eventFiles.length > 0) {
         logger.info(
           {
-            files: (eventFiles as Array<{ id?: string; mimetype?: string; url_private?: string }>).map(
-              (f) => ({ id: f.id, mimetype: f.mimetype, hasUrl: !!f.url_private }),
-            ),
+            files: (
+              eventFiles as Array<Record<string, unknown>>
+            ).map((f) => ({
+              id: f.id,
+              mimetype: f.mimetype,
+              filetype: f.filetype,
+              name: f.name,
+              hasUrl: !!f.url_private,
+            })),
           },
           'Processing file attachments',
         );
         try {
-          const imageTags = await this.downloadImageAttachments(
+          const tags = await this.downloadAttachments(
             eventFiles as Array<{
               id: string;
               mimetype: string;
@@ -176,14 +191,15 @@ export class SlackChannel implements Channel {
               url_private?: string;
               url_private_download?: string;
             }>,
+            msg.channel,
           );
-          if (imageTags.length > 0) {
+          if (tags.length > 0) {
             content = content
-              ? `${content}\n${imageTags.join('\n')}`
-              : imageTags.join('\n');
+              ? `${content}\n${tags.join('\n')}`
+              : tags.join('\n');
           }
         } catch (err) {
-          logger.warn({ err }, 'Failed to process image attachments');
+          logger.warn({ err }, 'Failed to process file attachments');
         }
       }
 
@@ -272,7 +288,11 @@ export class SlackChannel implements Channel {
       }
 
       logger.info(
-        { jid, textLength: messageText?.length ?? 0, images: imagePaths.length },
+        {
+          jid,
+          textLength: messageText?.length ?? 0,
+          images: imagePaths.length,
+        },
         'Slack message sent',
       );
     } catch (err) {
@@ -305,10 +325,71 @@ export class SlackChannel implements Channel {
   }
 
   /**
-   * Download image files from Slack attachments to local disk.
-   * Returns [Image: /path] tags for each successfully downloaded image.
+   * Download a single file from Slack to local disk.
+   * Returns the local file path, or null on failure.
    */
-  private async downloadImageAttachments(
+  private async downloadSlackFile(
+    file: {
+      id: string;
+      mimetype: string;
+      name: string | null;
+      url_private?: string;
+      url_private_download?: string;
+    },
+  ): Promise<string | null> {
+    const ext = file.name
+      ? path.extname(file.name)
+      : `.${file.mimetype.split('/')[1] || 'bin'}`;
+    const filename = `${Date.now()}-${file.id}${ext}`;
+    const filePath = path.join(ATTACHMENTS_DIR, filename);
+
+    const downloadUrl = file.url_private_download || file.url_private;
+    if (!downloadUrl) {
+      logger.warn({ fileId: file.id }, 'No download URL in file event');
+      return null;
+    }
+
+    const env = readEnvFile(['SLACK_BOT_TOKEN']);
+    const res = await fetch(downloadUrl, {
+      headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}` },
+      redirect: 'follow',
+    });
+    if (!res.ok) {
+      logger.warn(
+        { fileId: file.id, status: res.status },
+        'Failed to download Slack file',
+      );
+      return null;
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    // Verify it's not an HTML redirect page
+    if (
+      buffer.length > 15 &&
+      buffer.subarray(0, 15).toString().startsWith('<!DOCTYPE')
+    ) {
+      logger.warn(
+        { fileId: file.id },
+        'Downloaded file is HTML, not binary — auth may have failed',
+      );
+      return null;
+    }
+
+    fs.writeFileSync(filePath, buffer);
+    logger.info(
+      { fileId: file.id, path: filePath, size: buffer.length },
+      'Downloaded Slack file attachment',
+    );
+    return filePath;
+  }
+
+  /**
+   * Download file attachments (images + audio) from Slack.
+   * Images → [Image: /path] tags
+   * Audio → transcribe with whisper → [Transcript: /path] tags
+   */
+  private async downloadAttachments(
     files: Array<{
       id: string;
       mimetype: string;
@@ -316,66 +397,141 @@ export class SlackChannel implements Channel {
       url_private?: string;
       url_private_download?: string;
     }>,
+    channelId: string,
   ): Promise<string[]> {
     fs.mkdirSync(ATTACHMENTS_DIR, { recursive: true });
     const tags: string[] = [];
 
     for (const file of files) {
-      if (!IMAGE_MIMETYPES.has(file.mimetype)) continue;
+      // Slack sometimes sends empty mimetype — infer from file extension
+      const mime = file.mimetype || this.inferMimeFromName(file.name);
+      const isImage = IMAGE_MIMETYPES.has(mime);
+      const isAudio = isAudioMimetype(mime);
+      if (!isImage && !isAudio) continue;
 
       try {
-        const ext = file.name
-          ? path.extname(file.name)
-          : `.${file.mimetype.split('/')[1] || 'png'}`;
-        const filename = `${Date.now()}-${file.id}${ext}`;
-        const filePath = path.join(ATTACHMENTS_DIR, filename);
+        const filePath = await this.downloadSlackFile(file);
+        if (!filePath) continue;
 
-        // Use url_private from the event payload (no extra API call needed)
-        const downloadUrl = file.url_private_download || file.url_private;
-        if (!downloadUrl) {
-          logger.warn({ fileId: file.id }, 'No download URL in file event');
-          continue;
-        }
-
-        const env = readEnvFile(['SLACK_BOT_TOKEN']);
-        const res = await fetch(downloadUrl, {
-          headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}` },
-          redirect: 'follow',
-        });
-        if (!res.ok) {
-          logger.warn(
-            { fileId: file.id, status: res.status },
-            'Failed to download Slack file',
+        if (isImage) {
+          tags.push(`[Image: ${filePath}]`);
+        } else if (isAudio) {
+          // Transcribe audio with progress updates in Slack
+          const transcriptPath = await this.transcribeWithProgress(
+            filePath,
+            channelId,
+            file.name || 'audio',
           );
-          continue;
+          if (transcriptPath) {
+            tags.push(`[Transcript: ${transcriptPath}]`);
+          } else {
+            tags.push(`[Audio: ${filePath} (transcription unavailable)]`);
+          }
         }
-
-        const buffer = Buffer.from(await res.arrayBuffer());
-
-        // Verify it's actually an image (not an HTML redirect page)
-        if (
-          buffer.length > 15 &&
-          buffer.subarray(0, 15).toString().startsWith('<!DOCTYPE')
-        ) {
-          logger.warn(
-            { fileId: file.id },
-            'Downloaded file is HTML, not an image — auth may have failed',
-          );
-          continue;
-        }
-
-        fs.writeFileSync(filePath, buffer);
-        tags.push(`[Image: ${filePath}]`);
-        logger.info(
-          { fileId: file.id, path: filePath, size: buffer.length },
-          'Downloaded Slack image attachment',
-        );
       } catch (err) {
-        logger.warn({ fileId: file.id, err }, 'Error downloading Slack file');
+        logger.warn({ fileId: file.id, err }, 'Error processing Slack file');
       }
     }
 
     return tags;
+  }
+
+  /**
+   * Transcribe audio file with Slack progress updates.
+   * Posts a status message and updates it as transcription progresses.
+   */
+  private async transcribeWithProgress(
+    audioPath: string,
+    channelId: string,
+    fileName: string,
+  ): Promise<string | null> {
+    if (!isWhisperAvailable()) {
+      logger.warn('Whisper not available, skipping transcription');
+      return null;
+    }
+
+    // Post initial progress message
+    let progressTs: string | undefined;
+    try {
+      const result = await this.app.client.chat.postMessage({
+        channel: channelId,
+        text: `${fileName} 전사 중...`,
+      });
+      progressTs = result.ts as string;
+    } catch {
+      // Non-critical: progress updates are nice-to-have
+    }
+
+    let lastUpdateTime = 0;
+    const updateInterval = 30_000; // Update Slack message every 30s
+
+    const transcriptPath = await transcribeAudio(audioPath, (progress) => {
+      const now = Date.now();
+      if (!progressTs || now - lastUpdateTime < updateInterval) return;
+      lastUpdateTime = now;
+
+      const timeInfo = progress.currentTime
+        ? ` [${progress.currentTime}]`
+        : '';
+      this.app.client.chat
+        .update({
+          channel: channelId,
+          ts: progressTs!,
+          text: `${fileName} 전사 중...${timeInfo}`,
+        })
+        .catch(() => {});
+    });
+
+    // Update progress message and send completion notification
+    if (progressTs) {
+      const finalText = transcriptPath
+        ? `${fileName} 전사 완료`
+        : `${fileName} 전사 실패`;
+      this.app.client.chat
+        .update({
+          channel: channelId,
+          ts: progressTs,
+          text: finalText,
+        })
+        .catch(() => {});
+    }
+    if (transcriptPath) {
+      this.app.client.chat
+        .postMessage({
+          channel: channelId,
+          text: `${fileName} 전사가 완료되었습니다. 회의록을 작성합니다.`,
+        })
+        .catch(() => {});
+    }
+
+    return transcriptPath;
+  }
+
+  /**
+   * Infer MIME type from file name extension.
+   * Fallback when Slack sends empty mimetype.
+   */
+  private inferMimeFromName(name: string | null): string {
+    if (!name) return '';
+    const ext = path.extname(name).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.mp3': 'audio/mpeg',
+      '.m4a': 'audio/mp4',
+      '.wav': 'audio/wav',
+      '.ogg': 'audio/ogg',
+      '.webm': 'audio/webm',
+      '.flac': 'audio/flac',
+      '.aac': 'audio/aac',
+      '.opus': 'audio/opus',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+      '.svg': 'image/svg+xml',
+    };
+    return mimeMap[ext] || '';
   }
 
   /**

@@ -661,9 +661,19 @@ async function main(): Promise<void> {
       const nextRun = t.next_run
         ? new Date(t.next_run).toLocaleString('ko-KR', { timeZone: TIMEZONE })
         : '—';
-      const label =
-        t.prompt.length > 40 ? t.prompt.slice(0, 40) + '…' : t.prompt;
-      return `• ${label} → ${nextRun}`;
+      const groupName = t.group_folder.replace(/^(slack|whatsapp|telegram|discord)_/, '').replace(/_/g, '-');
+      let schedLabel = t.schedule_value;
+      if (t.schedule_type === 'cron') {
+        const parts = t.schedule_value.split(' ');
+        if (parts.length >= 5) {
+          const h = parts[1].padStart(2, '0');
+          const m = parts[0].padStart(2, '0');
+          const dayMap: Record<string, string> = { '1-5': '평일', '*': '매일', '0,6': '주말' };
+          const dayPart = dayMap[parts[4]] ?? parts[4];
+          schedLabel = `${dayPart} ${h}:${m}`;
+        }
+      }
+      return `• [${groupName}] ${schedLabel} → ${nextRun}`;
     });
 
     // Sessions
