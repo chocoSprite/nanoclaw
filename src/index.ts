@@ -62,7 +62,6 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
-import { startReviewCycle } from './review-cycle.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -78,6 +77,16 @@ let messageLoopRunning = false;
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
+
+// Bot-to-bot conversation guard: prevent infinite loops.
+// Tracks consecutive bot-triggered rounds per physical channel.
+// Resets when a human message arrives.
+const MAX_BOT_ROUNDS = 3;
+const botConversationCount: Record<string, number> = {};
+
+function getPhysicalChannel(jid: string): string {
+  return jid.replace(/^[^:]+:/, '');
+}
 
 const onecli = new OneCLI({ url: ONECLI_URL });
 
@@ -240,6 +249,34 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   if (missedMessages.length === 0) return true;
 
+  // Bot-to-bot conversation guard: prevent infinite loops.
+  // If all pending messages are from peer bots, increment counter.
+  // If any human message is present, reset counter.
+  const ch = getPhysicalChannel(chatJid);
+  const hasHumanMessages = missedMessages.some((m) => !m.is_bot_message);
+  const hasPeerBotMessages = missedMessages.some((m) => m.is_bot_message);
+
+  if (hasHumanMessages) {
+    delete botConversationCount[ch];
+  } else if (hasPeerBotMessages) {
+    botConversationCount[ch] = (botConversationCount[ch] || 0) + 1;
+    if (botConversationCount[ch] > MAX_BOT_ROUNDS) {
+      logger.info(
+        { group: group.name, rounds: botConversationCount[ch] },
+        'Bot conversation limit reached, pausing until user intervention',
+      );
+      // Advance cursor so we don't re-process these messages
+      lastAgentTimestamp[chatJid] =
+        missedMessages[missedMessages.length - 1].timestamp;
+      saveState();
+      await channel.sendMessage(
+        chatJid,
+        `[대화 ${MAX_BOT_ROUNDS}라운드 완료 — 사용자 입력을 기다립니다]`,
+      );
+      return true;
+    }
+  }
+
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
     const triggerPattern = getTriggerPattern(group.trigger);
@@ -283,7 +320,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
-  let collectedOutput = '';
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -298,7 +334,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       if (text) {
         await channel.sendMessage(chatJid, text);
         outputSentToUser = true;
-        collectedOutput += (collectedOutput ? '\n' : '') + text;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -334,62 +369,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       'Agent error, rolled back message cursor for retry',
     );
     return false;
-  }
-
-  // ── Auto-review cycle ──
-  // If this group has reviewConfig and the agent produced output, trigger review.
-  if (group.reviewConfig?.enabled && collectedOutput && outputSentToUser) {
-    const reviewGroup = registeredGroups[group.reviewConfig.reviewJid];
-    if (reviewGroup) {
-      const reviewChannel = findChannel(channels, group.reviewConfig.reviewJid);
-      logger.info(
-        { group: group.name, reviewGroup: reviewGroup.name },
-        'Starting auto-review cycle',
-      );
-      try {
-        const result = await startReviewCycle({
-          devGroup: group,
-          devJid: chatJid,
-          reviewConfig: group.reviewConfig,
-          reviewGroup,
-          devOutput: collectedOutput,
-          runAgentFn: runAgent,
-          sendAsReviewBot: async (text) => {
-            if (reviewChannel) {
-              await reviewChannel.sendMessage(
-                group.reviewConfig!.reviewJid,
-                text,
-              );
-            } else {
-              // Fallback: send via dev channel if review channel not available
-              await channel.sendMessage(chatJid, `[Review] ${text}`);
-            }
-          },
-          sendAsDevBot: async (text) => {
-            await channel.sendMessage(chatJid, text);
-          },
-          hasPendingMessages: () => queue.hasPendingMessages(chatJid),
-        });
-        logger.info(
-          {
-            group: group.name,
-            rounds: result.rounds,
-            verdict: result.finalVerdict,
-          },
-          'Review cycle completed',
-        );
-      } catch (err) {
-        logger.error(
-          { group: group.name, err },
-          'Review cycle failed unexpectedly',
-        );
-      }
-    } else {
-      logger.warn(
-        { reviewJid: group.reviewConfig.reviewJid },
-        'Review group not registered, skipping review cycle',
-      );
-    }
   }
 
   return true;
@@ -827,6 +806,11 @@ async function main(): Promise<void> {
           }
           return;
         }
+      }
+      // Reset bot conversation counter when a human sends a message
+      if (!msg.is_bot_message) {
+        const ch = getPhysicalChannel(chatJid);
+        delete botConversationCount[ch];
       }
       storeMessage(msg);
     },

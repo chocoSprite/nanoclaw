@@ -66,8 +66,6 @@ export interface SlackChannelConfig {
   requireMention?: boolean;
   /** Name to use when translating @mentions into trigger format (default: ASSISTANT_NAME) */
   triggerName?: string;
-  /** If true, only treat own user ID as bot message (not all bot_id messages). Use in multi-bot channels. */
-  strictBotDetection?: boolean;
 }
 
 export interface SlackChannelOpts {
@@ -76,6 +74,11 @@ export interface SlackChannelOpts {
   registeredGroups: () => Record<string, RegisteredGroup>;
   config?: SlackChannelConfig;
 }
+
+// Module-level shared map: triggerName → Slack user ID.
+// Populated by each SlackChannel on connect(). Used to translate
+// outbound @mentions (e.g. "@매트") into Slack <@UID> format.
+const botMentionMap = new Map<string, string>();
 
 export class SlackChannel implements Channel {
   name: string;
@@ -93,7 +96,7 @@ export class SlackChannel implements Channel {
   private ignoreMentions: string[];
   private requireMention: boolean;
   private triggerName: string;
-  private strictBotDetection: boolean;
+  private ownBotId: string | undefined;
 
   constructor(opts: SlackChannelOpts) {
     this.opts = opts;
@@ -103,7 +106,6 @@ export class SlackChannel implements Channel {
     this.ignoreMentions = cfg.ignoreMentions ?? [];
     this.requireMention = cfg.requireMention ?? false;
     this.triggerName = cfg.triggerName ?? ASSISTANT_NAME;
-    this.strictBotDetection = cfg.strictBotDetection ?? false;
     this.name = this.jidPrefix;
 
     const appTokenKey = cfg.appTokenKey ?? 'SLACK_APP_TOKEN';
@@ -177,37 +179,40 @@ export class SlackChannel implements Channel {
       const groups = this.opts.registeredGroups();
       if (!groups[jid]) return;
 
-      // Detect messages from THIS bot (not other bots in the channel).
-      // In multi-bot channels, bot_id alone is insufficient since other bots
-      // also have bot_id set. We check user ID first, then fall back to bot_id
-      // only when there's a single bot (no multi-bot prefix configured).
-      const isFromThisBot = msg.user === this.botUserId;
+      // Detect messages from THIS bot vs other bots in the channel.
+      // We check both user ID and bot_id for reliable self-detection.
+      // Other bots' messages are treated as regular messages so they can
+      // trigger processing (enabling bot-to-bot conversation).
+      const isFromThisBot =
+        msg.user === this.botUserId ||
+        (msg as BotMessageEvent).bot_id === this.ownBotId;
       const isAnyBot = !!(msg as BotMessageEvent).bot_id;
-      const isBotMessage =
-        isFromThisBot || (isAnyBot && !this.strictBotDetection);
 
       // Skip messages that @mention a bot we should ignore
       const rawText = msg.text || '';
       if (
-        !isBotMessage &&
+        !isFromThisBot &&
         this.ignoreMentions.some((uid) => rawText.includes(`<@${uid}>`))
       ) {
         return;
       }
 
-      // If requireMention is set, only process messages that @mention this bot
+      // If requireMention is set, only process messages that @mention this bot.
+      // Accept both Slack-encoded <@UBOTID> and plain text @triggerName
+      // (the latter enables bot-to-bot mentions without Slack encoding).
       if (
         this.requireMention &&
-        !isBotMessage &&
+        !isFromThisBot &&
         this.botUserId &&
-        !rawText.includes(`<@${this.botUserId}>`)
+        !rawText.includes(`<@${this.botUserId}>`) &&
+        !rawText.includes(`@${this.triggerName}`)
       ) {
         return;
       }
 
       let senderName: string;
-      if (isBotMessage) {
-        senderName = ASSISTANT_NAME;
+      if (isFromThisBot) {
+        senderName = this.triggerName;
       } else {
         senderName =
           (msg.user ? await this.resolveUserName(msg.user) : undefined) ||
@@ -219,7 +224,7 @@ export class SlackChannel implements Channel {
       // Slack encodes @mentions as <@U12345>, which won't match trigger patterns,
       // so we prepend the trigger name when this bot is @mentioned.
       let content = msg.text || '';
-      if (this.botUserId && !isBotMessage) {
+      if (this.botUserId && !isFromThisBot) {
         const mentionPattern = `<@${this.botUserId}>`;
         const triggerPrefix = `@${this.triggerName}`;
         if (
@@ -274,8 +279,8 @@ export class SlackChannel implements Channel {
         sender_name: senderName,
         content,
         timestamp,
-        is_from_me: isBotMessage,
-        is_bot_message: isBotMessage,
+        is_from_me: isFromThisBot,
+        is_bot_message: isAnyBot,
       });
     });
   }
@@ -283,13 +288,18 @@ export class SlackChannel implements Channel {
   async connect(): Promise<void> {
     await this.app.start();
 
-    // Get bot's own user ID for self-message detection.
+    // Get bot's own user ID and bot ID for self-message detection.
     // Resolve this BEFORE setting connected=true so that messages arriving
     // during startup can correctly detect bot-sent messages.
     try {
       const auth = await this.app.client.auth.test();
       this.botUserId = auth.user_id as string;
-      logger.info({ botUserId: this.botUserId }, 'Connected to Slack');
+      this.ownBotId = auth.bot_id as string | undefined;
+      botMentionMap.set(this.triggerName, this.botUserId);
+      logger.info(
+        { botUserId: this.botUserId, botId: this.ownBotId },
+        'Connected to Slack',
+      );
     } catch (err) {
       logger.warn({ err }, 'Connected to Slack but failed to get bot user ID');
     }
@@ -315,8 +325,11 @@ export class SlackChannel implements Channel {
       return;
     }
 
+    // Translate @mentions (e.g. "@매트") to Slack <@UID> format
+    const mentionTranslated = this.translateOutboundMentions(text);
+
     // Extract images from agent output
-    const { cleanText, imagePaths } = this.extractImagePaths(text);
+    const { cleanText, imagePaths } = this.extractImagePaths(mentionTranslated);
     const messageText = cleanText || (imagePaths.length > 0 ? undefined : text);
 
     try {
@@ -386,6 +399,31 @@ export class SlackChannel implements Channel {
   // doesn't need channel-specific branching.
   async setTyping(_jid: string, _isTyping: boolean): Promise<void> {
     // no-op: Slack Bot API has no typing indicator endpoint
+  }
+
+  /**
+   * Translate plain-text @mentions to Slack <@UID> format in outbound messages.
+   * Checks bot names (shared botMentionMap) and known user names (userNameCache).
+   */
+  private translateOutboundMentions(text: string): string {
+    if (!text.includes('@')) return text;
+    let result = text;
+
+    // Bot mentions (e.g. @매트 → <@U...>)
+    for (const [name, uid] of botMentionMap) {
+      if (result.includes(`@${name}`)) {
+        result = result.replaceAll(`@${name}`, `<@${uid}>`);
+      }
+    }
+
+    // User mentions — reverse lookup from userNameCache
+    for (const [uid, name] of this.userNameCache) {
+      if (result.includes(`@${name}`)) {
+        result = result.replaceAll(`@${name}`, `<@${uid}>`);
+      }
+    }
+
+    return result;
   }
 
   /**
