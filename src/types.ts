@@ -32,6 +32,13 @@ export interface ContainerConfig {
   timeout?: number; // Default: 300000 (5 minutes)
 }
 
+export interface ReviewConfig {
+  enabled: boolean;
+  reviewJid: string; // JID of the review bot channel (e.g. "slack-review:C123...")
+  reviewFolder: string; // Group folder for the review agent
+  maxRounds: number; // Max dev→review cycles before forced stop (default: 3)
+}
+
 export interface RegisteredGroup {
   name: string;
   folder: string;
@@ -40,6 +47,7 @@ export interface RegisteredGroup {
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
+  reviewConfig?: ReviewConfig; // Auto-review cycle config (multi-agent channels)
 }
 
 export interface NewMessage {

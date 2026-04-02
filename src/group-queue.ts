@@ -59,6 +59,11 @@ export class GroupQueue {
     this.processMessagesFn = fn;
   }
 
+  /** Check if new user messages are waiting for this group (used by review cycle to detect intervention). */
+  hasPendingMessages(groupJid: string): boolean {
+    return this.getGroup(groupJid).pendingMessages;
+  }
+
   enqueueMessageCheck(groupJid: string): void {
     if (this.shuttingDown) return;
 

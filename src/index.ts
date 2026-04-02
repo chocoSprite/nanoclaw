@@ -62,6 +62,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { startReviewCycle } from './review-cycle.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -282,6 +283,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
+  let collectedOutput = '';
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -296,6 +298,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       if (text) {
         await channel.sendMessage(chatJid, text);
         outputSentToUser = true;
+        collectedOutput += (collectedOutput ? '\n' : '') + text;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
@@ -331,6 +334,66 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       'Agent error, rolled back message cursor for retry',
     );
     return false;
+  }
+
+  // ── Auto-review cycle ──
+  // If this group has reviewConfig and the agent produced output, trigger review.
+  if (
+    group.reviewConfig?.enabled &&
+    collectedOutput &&
+    outputSentToUser
+  ) {
+    const reviewGroup = registeredGroups[group.reviewConfig.reviewJid];
+    if (reviewGroup) {
+      const reviewChannel = findChannel(channels, group.reviewConfig.reviewJid);
+      logger.info(
+        { group: group.name, reviewGroup: reviewGroup.name },
+        'Starting auto-review cycle',
+      );
+      try {
+        const result = await startReviewCycle({
+          devGroup: group,
+          devJid: chatJid,
+          reviewConfig: group.reviewConfig,
+          reviewGroup,
+          devOutput: collectedOutput,
+          runAgentFn: runAgent,
+          sendAsReviewBot: async (text) => {
+            if (reviewChannel) {
+              await reviewChannel.sendMessage(
+                group.reviewConfig!.reviewJid,
+                text,
+              );
+            } else {
+              // Fallback: send via dev channel if review channel not available
+              await channel.sendMessage(chatJid, `[Review] ${text}`);
+            }
+          },
+          sendAsDevBot: async (text) => {
+            await channel.sendMessage(chatJid, text);
+          },
+          hasPendingMessages: () => queue.hasPendingMessages(chatJid),
+        });
+        logger.info(
+          {
+            group: group.name,
+            rounds: result.rounds,
+            verdict: result.finalVerdict,
+          },
+          'Review cycle completed',
+        );
+      } catch (err) {
+        logger.error(
+          { group: group.name, err },
+          'Review cycle failed unexpectedly',
+        );
+      }
+    } else {
+      logger.warn(
+        { reviewJid: group.reviewConfig.reviewJid },
+        'Review group not registered, skipping review cycle',
+      );
+    }
   }
 
   return true;

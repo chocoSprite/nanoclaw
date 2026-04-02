@@ -69,7 +69,9 @@ function escapeRegex(str: string): string {
 }
 
 export function buildTriggerPattern(trigger: string): RegExp {
-  return new RegExp(`^${escapeRegex(trigger.trim())}\\b`, 'i');
+  // Use (?:\s|$) instead of \b — word boundaries don't work with non-ASCII
+  // characters (Korean, Japanese, etc.) in JavaScript regex.
+  return new RegExp(`^${escapeRegex(trigger.trim())}(?:\\s|$)`, 'i');
 }
 
 export const DEFAULT_TRIGGER = `@${ASSISTANT_NAME}`;

@@ -53,14 +53,30 @@ type HandledMessageEvent =
   | BotMessageEvent
   | FileShareMessageEvent;
 
+export interface SlackChannelConfig {
+  /** .env key for Bot User OAuth Token (default: 'SLACK_BOT_TOKEN') */
+  botTokenKey?: string;
+  /** .env key for App-Level Token (default: 'SLACK_APP_TOKEN') */
+  appTokenKey?: string;
+  /** JID prefix used to namespace this channel (default: 'slack') */
+  jidPrefix?: string;
+  /** Slack user IDs whose @mentions this channel should ignore */
+  ignoreMentions?: string[];
+  /** If true, only process messages that @mention this bot (default: false) */
+  requireMention?: boolean;
+  /** Name to use when translating @mentions into trigger format (default: ASSISTANT_NAME) */
+  triggerName?: string;
+}
+
 export interface SlackChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
+  config?: SlackChannelConfig;
 }
 
 export class SlackChannel implements Channel {
-  name = 'slack';
+  name: string;
 
   private app: App;
   private botUserId: string | undefined;
@@ -70,19 +86,33 @@ export class SlackChannel implements Channel {
   private userNameCache = new Map<string, string>();
 
   private opts: SlackChannelOpts;
+  private jidPrefix: string;
+  private botTokenKey: string;
+  private ignoreMentions: string[];
+  private requireMention: boolean;
+  private triggerName: string;
 
   constructor(opts: SlackChannelOpts) {
     this.opts = opts;
+    const cfg = opts.config ?? {};
+    this.jidPrefix = cfg.jidPrefix ?? 'slack';
+    this.botTokenKey = cfg.botTokenKey ?? 'SLACK_BOT_TOKEN';
+    this.ignoreMentions = cfg.ignoreMentions ?? [];
+    this.requireMention = cfg.requireMention ?? false;
+    this.triggerName = cfg.triggerName ?? ASSISTANT_NAME;
+    this.name = this.jidPrefix;
+
+    const appTokenKey = cfg.appTokenKey ?? 'SLACK_APP_TOKEN';
 
     // Read tokens from .env (not process.env — keeps secrets off the environment
     // so they don't leak to child processes, matching NanoClaw's security pattern)
-    const env = readEnvFile(['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN']);
-    const botToken = env.SLACK_BOT_TOKEN;
-    const appToken = env.SLACK_APP_TOKEN;
+    const env = readEnvFile([this.botTokenKey, appTokenKey]);
+    const botToken = env[this.botTokenKey];
+    const appToken = env[appTokenKey];
 
     if (!botToken || !appToken) {
       throw new Error(
-        'SLACK_BOT_TOKEN and SLACK_APP_TOKEN must be set in .env',
+        `${this.botTokenKey} and ${appTokenKey} must be set in .env`,
       );
     }
 
@@ -126,19 +156,43 @@ export class SlackChannel implements Channel {
       // The agent sees them alongside channel-level messages; responses
       // always go to the channel, not back into the thread.
 
-      const jid = `slack:${msg.channel}`;
+      const jid = `${this.jidPrefix}:${msg.channel}`;
       const timestamp = new Date(parseFloat(msg.ts) * 1000).toISOString();
       const isGroup = msg.channel_type !== 'im';
 
       // Always report metadata for group discovery
-      this.opts.onChatMetadata(jid, timestamp, undefined, 'slack', isGroup);
+      this.opts.onChatMetadata(jid, timestamp, undefined, this.jidPrefix, isGroup);
 
       // Only deliver full messages for registered groups
       const groups = this.opts.registeredGroups();
       if (!groups[jid]) return;
 
-      const isBotMessage =
-        !!(msg as BotMessageEvent).bot_id || msg.user === this.botUserId;
+      // Detect messages from THIS bot (not other bots in the channel).
+      // In multi-bot channels, bot_id alone is insufficient since other bots
+      // also have bot_id set. We check user ID first, then fall back to bot_id
+      // only when there's a single bot (no multi-bot prefix configured).
+      const isFromThisBot = msg.user === this.botUserId;
+      const isAnyBot = !!(msg as BotMessageEvent).bot_id;
+      const isBotMessage = isFromThisBot || (isAnyBot && this.jidPrefix === 'slack');
+
+      // Skip messages that @mention a bot we should ignore
+      const rawText = msg.text || '';
+      if (
+        !isBotMessage &&
+        this.ignoreMentions.some((uid) => rawText.includes(`<@${uid}>`))
+      ) {
+        return;
+      }
+
+      // If requireMention is set, only process messages that @mention this bot
+      if (
+        this.requireMention &&
+        !isBotMessage &&
+        this.botUserId &&
+        !rawText.includes(`<@${this.botUserId}>`)
+      ) {
+        return;
+      }
 
       let senderName: string;
       if (isBotMessage) {
@@ -150,17 +204,18 @@ export class SlackChannel implements Channel {
           'unknown';
       }
 
-      // Translate Slack <@UBOTID> mentions into TRIGGER_PATTERN format.
-      // Slack encodes @mentions as <@U12345>, which won't match TRIGGER_PATTERN
-      // (e.g., ^@<ASSISTANT_NAME>\b), so we prepend the trigger when the bot is @mentioned.
+      // Translate Slack <@UBOTID> mentions into trigger format.
+      // Slack encodes @mentions as <@U12345>, which won't match trigger patterns,
+      // so we prepend the trigger name when this bot is @mentioned.
       let content = msg.text || '';
       if (this.botUserId && !isBotMessage) {
         const mentionPattern = `<@${this.botUserId}>`;
+        const triggerPrefix = `@${this.triggerName}`;
         if (
           content.includes(mentionPattern) &&
-          !TRIGGER_PATTERN.test(content)
+          !content.startsWith(triggerPrefix)
         ) {
-          content = `@${ASSISTANT_NAME} ${content}`;
+          content = `${triggerPrefix} ${content}`;
         }
       }
 
@@ -238,7 +293,7 @@ export class SlackChannel implements Channel {
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
-    const channelId = jid.replace(/^slack:/, '');
+    const channelId = jid.replace(new RegExp(`^${this.jidPrefix}:`), '');
 
     if (!this.connected) {
       this.outgoingQueue.push({ jid, text });
@@ -307,7 +362,7 @@ export class SlackChannel implements Channel {
   }
 
   ownsJid(jid: string): boolean {
-    return jid.startsWith('slack:');
+    return jid.startsWith(`${this.jidPrefix}:`);
   }
 
   async disconnect(): Promise<void> {
@@ -345,9 +400,9 @@ export class SlackChannel implements Channel {
       return null;
     }
 
-    const env = readEnvFile(['SLACK_BOT_TOKEN']);
+    const env = readEnvFile([this.botTokenKey]);
     const res = await fetch(downloadUrl, {
-      headers: { Authorization: `Bearer ${env.SLACK_BOT_TOKEN}` },
+      headers: { Authorization: `Bearer ${env[this.botTokenKey]}` },
       redirect: 'follow',
     });
     if (!res.ok) {
@@ -578,7 +633,7 @@ export class SlackChannel implements Channel {
 
         for (const ch of result.channels || []) {
           if (ch.id && ch.name && ch.is_member) {
-            updateChatName(`slack:${ch.id}`, ch.name);
+            updateChatName(`${this.jidPrefix}:${ch.id}`, ch.name);
             count++;
           }
         }
@@ -619,7 +674,7 @@ export class SlackChannel implements Channel {
       );
       while (this.outgoingQueue.length > 0) {
         const item = this.outgoingQueue.shift()!;
-        const channelId = item.jid.replace(/^slack:/, '');
+        const channelId = item.jid.replace(new RegExp(`^${this.jidPrefix}:`), '');
         await this.app.client.chat.postMessage({
           channel: channelId,
           text: item.text,
