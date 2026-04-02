@@ -122,7 +122,10 @@ export async function transcribeAudio(
   try {
     // Double-check cache after acquiring lock
     if (fs.existsSync(outputPath)) {
-      logger.info({ audioPath, outputPath }, 'Transcript cache hit (post-lock)');
+      logger.info(
+        { audioPath, outputPath },
+        'Transcript cache hit (post-lock)',
+      );
       return outputPath;
     }
 
@@ -132,10 +135,13 @@ export async function transcribeAudio(
       const proc = spawn(
         WHISPER_BIN,
         [
-          '-m', MODEL_PATH,
-          '-l', 'auto',
+          '-m',
+          MODEL_PATH,
+          '-l',
+          'auto',
           '-otxt',
-          '-of', outputPrefix,
+          '-of',
+          outputPrefix,
           audioPath,
         ],
         { stdio: ['ignore', 'pipe', 'pipe'] },
@@ -188,10 +194,7 @@ export async function transcribeAudio(
         clearTimeout(timeout);
 
         if (code === 0 && fs.existsSync(outputPath)) {
-          logger.info(
-            { audioPath, outputPath },
-            'Transcription completed',
-          );
+          logger.info({ audioPath, outputPath }, 'Transcription completed');
           resolve(outputPath);
         } else {
           logger.warn(

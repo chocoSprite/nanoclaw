@@ -170,9 +170,7 @@ export class SlackChannel implements Channel {
       if (eventFiles && eventFiles.length > 0) {
         logger.info(
           {
-            files: (
-              eventFiles as Array<Record<string, unknown>>
-            ).map((f) => ({
+            files: (eventFiles as Array<Record<string, unknown>>).map((f) => ({
               id: f.id,
               mimetype: f.mimetype,
               filetype: f.filetype,
@@ -328,15 +326,13 @@ export class SlackChannel implements Channel {
    * Download a single file from Slack to local disk.
    * Returns the local file path, or null on failure.
    */
-  private async downloadSlackFile(
-    file: {
-      id: string;
-      mimetype: string;
-      name: string | null;
-      url_private?: string;
-      url_private_download?: string;
-    },
-  ): Promise<string | null> {
+  private async downloadSlackFile(file: {
+    id: string;
+    mimetype: string;
+    name: string | null;
+    url_private?: string;
+    url_private_download?: string;
+  }): Promise<string | null> {
     const ext = file.name
       ? path.extname(file.name)
       : `.${file.mimetype.split('/')[1] || 'bin'}`;
@@ -470,9 +466,7 @@ export class SlackChannel implements Channel {
       if (!progressTs || now - lastUpdateTime < updateInterval) return;
       lastUpdateTime = now;
 
-      const timeInfo = progress.currentTime
-        ? ` [${progress.currentTime}]`
-        : '';
+      const timeInfo = progress.currentTime ? ` [${progress.currentTime}]` : '';
       this.app.client.chat
         .update({
           channel: channelId,
