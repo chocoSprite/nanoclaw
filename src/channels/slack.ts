@@ -66,6 +66,8 @@ export interface SlackChannelConfig {
   requireMention?: boolean;
   /** Name to use when translating @mentions into trigger format (default: ASSISTANT_NAME) */
   triggerName?: string;
+  /** If true, only treat own user ID as bot message (not all bot_id messages). Use in multi-bot channels. */
+  strictBotDetection?: boolean;
 }
 
 export interface SlackChannelOpts {
@@ -91,6 +93,7 @@ export class SlackChannel implements Channel {
   private ignoreMentions: string[];
   private requireMention: boolean;
   private triggerName: string;
+  private strictBotDetection: boolean;
 
   constructor(opts: SlackChannelOpts) {
     this.opts = opts;
@@ -100,6 +103,7 @@ export class SlackChannel implements Channel {
     this.ignoreMentions = cfg.ignoreMentions ?? [];
     this.requireMention = cfg.requireMention ?? false;
     this.triggerName = cfg.triggerName ?? ASSISTANT_NAME;
+    this.strictBotDetection = cfg.strictBotDetection ?? false;
     this.name = this.jidPrefix;
 
     const appTokenKey = cfg.appTokenKey ?? 'SLACK_APP_TOKEN';
@@ -180,7 +184,7 @@ export class SlackChannel implements Channel {
       const isFromThisBot = msg.user === this.botUserId;
       const isAnyBot = !!(msg as BotMessageEvent).bot_id;
       const isBotMessage =
-        isFromThisBot || (isAnyBot && this.jidPrefix === 'slack');
+        isFromThisBot || (isAnyBot && !this.strictBotDetection);
 
       // Skip messages that @mention a bot we should ignore
       const rawText = msg.text || '';

@@ -32,6 +32,7 @@ registerChannel('slack-review', (opts: ChannelOpts) => {
       appTokenKey: 'SLACK_REVIEW_APP_TOKEN',
       jidPrefix: 'slack-review',
       requireMention: true,
+      strictBotDetection: true,
       triggerName: envVars.REVIEW_ASSISTANT_NAME || '매트',
     },
   });
