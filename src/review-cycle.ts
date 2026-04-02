@@ -96,14 +96,19 @@ export async function startReviewCycle(
 
     rounds++;
     logger.info(
-      { group: devGroup.name, round: rounds, maxRounds: reviewConfig.maxRounds },
+      {
+        group: devGroup.name,
+        round: rounds,
+        maxRounds: reviewConfig.maxRounds,
+      },
       'Review cycle: starting review round',
     );
 
     // ── Run review agent ──
-    const reviewPrompt = rounds === 1
-      ? `다음은 개발 에이전트의 작업 결과입니다. 리뷰해주세요.\n\n---\n\n${currentDevOutput}`
-      : `개발 에이전트가 이전 리뷰 피드백을 반영하여 수정했습니다. 다시 리뷰해주세요.\n\n---\n\n${currentDevOutput}`;
+    const reviewPrompt =
+      rounds === 1
+        ? `다음은 개발 에이전트의 작업 결과입니다. 리뷰해주세요.\n\n---\n\n${currentDevOutput}`
+        : `개발 에이전트가 이전 리뷰 피드백을 반영하여 수정했습니다. 다시 리뷰해주세요.\n\n---\n\n${currentDevOutput}`;
 
     let reviewOutput = '';
     const reviewResult = await opts.runAgentFn(
@@ -116,7 +121,9 @@ export async function startReviewCycle(
             typeof output.result === 'string'
               ? output.result
               : JSON.stringify(output.result);
-          const cleaned = text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          const cleaned = text
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
           if (cleaned) {
             reviewOutput += (reviewOutput ? '\n' : '') + cleaned;
             await opts.sendAsReviewBot(cleaned);
@@ -126,12 +133,18 @@ export async function startReviewCycle(
     );
 
     if (reviewResult === 'error') {
-      logger.error({ group: devGroup.name, round: rounds }, 'Review agent failed');
+      logger.error(
+        { group: devGroup.name, round: rounds },
+        'Review agent failed',
+      );
       return { rounds, finalVerdict: 'error' };
     }
 
     if (!reviewOutput) {
-      logger.warn({ group: devGroup.name, round: rounds }, 'Review agent produced no output');
+      logger.warn(
+        { group: devGroup.name, round: rounds },
+        'Review agent produced no output',
+      );
       return { rounds, finalVerdict: 'done' };
     }
 
@@ -169,7 +182,9 @@ export async function startReviewCycle(
             typeof output.result === 'string'
               ? output.result
               : JSON.stringify(output.result);
-          const cleaned = text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          const cleaned = text
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
           if (cleaned) {
             devOutput += (devOutput ? '\n' : '') + cleaned;
             await opts.sendAsDevBot(cleaned);
@@ -179,7 +194,10 @@ export async function startReviewCycle(
     );
 
     if (devResult === 'error') {
-      logger.error({ group: devGroup.name, round: rounds }, 'Dev agent failed during revision');
+      logger.error(
+        { group: devGroup.name, round: rounds },
+        'Dev agent failed during revision',
+      );
       return { rounds, finalVerdict: 'error' };
     }
 

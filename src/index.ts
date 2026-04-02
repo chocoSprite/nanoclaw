@@ -338,11 +338,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // ── Auto-review cycle ──
   // If this group has reviewConfig and the agent produced output, trigger review.
-  if (
-    group.reviewConfig?.enabled &&
-    collectedOutput &&
-    outputSentToUser
-  ) {
+  if (group.reviewConfig?.enabled && collectedOutput && outputSentToUser) {
     const reviewGroup = registeredGroups[group.reviewConfig.reviewJid];
     if (reviewGroup) {
       const reviewChannel = findChannel(channels, group.reviewConfig.reviewJid);

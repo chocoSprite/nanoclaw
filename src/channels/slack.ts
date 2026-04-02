@@ -161,7 +161,13 @@ export class SlackChannel implements Channel {
       const isGroup = msg.channel_type !== 'im';
 
       // Always report metadata for group discovery
-      this.opts.onChatMetadata(jid, timestamp, undefined, this.jidPrefix, isGroup);
+      this.opts.onChatMetadata(
+        jid,
+        timestamp,
+        undefined,
+        this.jidPrefix,
+        isGroup,
+      );
 
       // Only deliver full messages for registered groups
       const groups = this.opts.registeredGroups();
@@ -173,7 +179,8 @@ export class SlackChannel implements Channel {
       // only when there's a single bot (no multi-bot prefix configured).
       const isFromThisBot = msg.user === this.botUserId;
       const isAnyBot = !!(msg as BotMessageEvent).bot_id;
-      const isBotMessage = isFromThisBot || (isAnyBot && this.jidPrefix === 'slack');
+      const isBotMessage =
+        isFromThisBot || (isAnyBot && this.jidPrefix === 'slack');
 
       // Skip messages that @mention a bot we should ignore
       const rawText = msg.text || '';
@@ -674,7 +681,10 @@ export class SlackChannel implements Channel {
       );
       while (this.outgoingQueue.length > 0) {
         const item = this.outgoingQueue.shift()!;
-        const channelId = item.jid.replace(new RegExp(`^${this.jidPrefix}:`), '');
+        const channelId = item.jid.replace(
+          new RegExp(`^${this.jidPrefix}:`),
+          '',
+        );
         await this.app.client.chat.postMessage({
           channel: channelId,
           text: item.text,
