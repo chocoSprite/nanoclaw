@@ -37,7 +37,6 @@ import {
   getAllTasks,
   getLastBotMessageTimestamp,
   getMessagesSince,
-  getNewMessages,
   getRouterState,
   initDatabase,
   setRegisteredGroup,
@@ -69,7 +68,6 @@ import { logger } from './logger.js';
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
 
-let lastTimestamp = '';
 let sessions: Record<string, string> = {};
 let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
@@ -110,7 +108,6 @@ function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
 }
 
 function loadState(): void {
-  lastTimestamp = getRouterState('last_timestamp') || '';
   const agentTs = getRouterState('last_agent_timestamp');
   try {
     lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
@@ -148,7 +145,6 @@ function getOrRecoverCursor(chatJid: string): string {
 }
 
 function saveState(): void {
-  setRouterState('last_timestamp', lastTimestamp);
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
@@ -468,93 +464,56 @@ async function startMessageLoop(): Promise<void> {
   while (true) {
     try {
       const jids = Object.keys(registeredGroups);
-      const { messages, newTimestamp } = getNewMessages(
-        jids,
-        lastTimestamp,
-        ASSISTANT_NAME,
-      );
 
-      if (messages.length > 0) {
-        logger.info({ count: messages.length }, 'New messages');
+      for (const chatJid of jids) {
+        const group = registeredGroups[chatJid];
+        if (!group) continue;
 
-        // Advance the "seen" cursor for all messages immediately
-        lastTimestamp = newTimestamp;
-        saveState();
+        const pending = getMessagesSince(
+          chatJid,
+          getOrRecoverCursor(chatJid),
+          ASSISTANT_NAME,
+          MAX_MESSAGES_PER_PROMPT,
+        );
+        if (pending.length === 0) continue;
 
-        // Deduplicate by group
-        const messagesByGroup = new Map<string, NewMessage[]>();
-        for (const msg of messages) {
-          const existing = messagesByGroup.get(msg.chat_jid);
-          if (existing) {
-            existing.push(msg);
-          } else {
-            messagesByGroup.set(msg.chat_jid, [msg]);
-          }
+        const isMainGroup = group.isMain === true;
+        const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
+
+        if (needsTrigger) {
+          const triggerPattern = getTriggerPattern(group.trigger);
+          const allowlistCfg = loadSenderAllowlist();
+          const hasTrigger = pending.some(
+            (m) =>
+              triggerPattern.test(m.content.trim()) &&
+              (m.is_from_me ||
+                isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
+          );
+          if (!hasTrigger) continue;
         }
 
-        for (const [chatJid, groupMessages] of messagesByGroup) {
-          const group = registeredGroups[chatJid];
-          if (!group) continue;
+        const channel = findChannel(channels, chatJid);
+        if (!channel) continue;
 
-          const channel = findChannel(channels, chatJid);
-          if (!channel) {
-            logger.warn({ chatJid }, 'No channel owns JID, skipping messages');
-            continue;
-          }
+        const formatted = formatMessages(pending, TIMEZONE);
 
-          const isMainGroup = group.isMain === true;
-          const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
-
-          // For non-main groups, only act on trigger messages.
-          // Non-trigger messages accumulate in DB and get pulled as
-          // context when a trigger eventually arrives.
-          if (needsTrigger) {
-            const triggerPattern = getTriggerPattern(group.trigger);
-            const allowlistCfg = loadSenderAllowlist();
-            const hasTrigger = groupMessages.some(
-              (m) =>
-                triggerPattern.test(m.content.trim()) &&
-                (m.is_from_me ||
-                  isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
+        if (queue.sendMessage(chatJid, formatted)) {
+          lastAgentTimestamp[chatJid] =
+            pending[pending.length - 1].timestamp;
+          saveState();
+          channel
+            .setTyping?.(chatJid, true)
+            ?.catch((err) =>
+              logger.warn({ chatJid, err }, 'Failed to set typing indicator'),
             );
-            if (!hasTrigger) continue;
-          }
-
-          // Pull all messages since lastAgentTimestamp so non-trigger
-          // context that accumulated between triggers is included.
-          const allPending = getMessagesSince(
-            chatJid,
-            getOrRecoverCursor(chatJid),
-            ASSISTANT_NAME,
-            MAX_MESSAGES_PER_PROMPT,
-          );
-          const messagesToSend =
-            allPending.length > 0 ? allPending : groupMessages;
-          const formatted = formatMessages(messagesToSend, TIMEZONE);
-
-          if (queue.sendMessage(chatJid, formatted)) {
-            logger.debug(
-              { chatJid, count: messagesToSend.length },
-              'Piped messages to active container',
-            );
-            lastAgentTimestamp[chatJid] =
-              messagesToSend[messagesToSend.length - 1].timestamp;
-            saveState();
-            // Show typing indicator while the container processes the piped message
-            channel
-              .setTyping?.(chatJid, true)
-              ?.catch((err) =>
-                logger.warn({ chatJid, err }, 'Failed to set typing indicator'),
-              );
-          } else {
-            // No active container — enqueue for a new one
-            queue.enqueueMessageCheck(chatJid);
-          }
+        } else {
+          queue.enqueueMessageCheck(chatJid);
         }
       }
     } catch (err) {
       logger.error({ err }, 'Error in message loop');
     }
+
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
   }
 }
