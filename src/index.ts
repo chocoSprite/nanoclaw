@@ -498,8 +498,7 @@ async function startMessageLoop(): Promise<void> {
         const formatted = formatMessages(pending, TIMEZONE);
 
         if (queue.sendMessage(chatJid, formatted)) {
-          lastAgentTimestamp[chatJid] =
-            pending[pending.length - 1].timestamp;
+          lastAgentTimestamp[chatJid] = pending[pending.length - 1].timestamp;
           saveState();
           channel
             .setTyping?.(chatJid, true)

@@ -40,8 +40,9 @@ const IMAGE_MIMETYPES = new Set([
   'image/bmp',
 ]);
 
-// Regex to extract [Image: /path] tags from outbound agent text
+// Regex to extract [Image: /path] and [File: /path] tags from outbound agent text
 const IMAGE_TAG_RE = /\[Image:\s*(\/[^\]]+)\]/g;
+const FILE_TAG_RE = /\[File:\s*(\/[^\]]+)\]/g;
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 // Markdown image links: [name.png](/path/name.png)
 const MD_IMAGE_LINK_RE = /\[[^\]]*\]\((\/[^)]+)\)/g;
@@ -328,9 +329,9 @@ export class SlackChannel implements Channel {
     // Translate @mentions (e.g. "@매트") to Slack <@UID> format
     const mentionTranslated = this.translateOutboundMentions(text);
 
-    // Extract images from agent output
-    const { cleanText, imagePaths } = this.extractImagePaths(mentionTranslated);
-    const messageText = cleanText || (imagePaths.length > 0 ? undefined : text);
+    // Extract files (images + general) from agent output
+    const { cleanText, filePaths } = this.extractFilePaths(mentionTranslated);
+    const messageText = cleanText || (filePaths.length > 0 ? undefined : text);
 
     try {
       // Send text message
@@ -350,17 +351,17 @@ export class SlackChannel implements Channel {
         }
       }
 
-      // Upload image files
-      for (const imgPath of imagePaths) {
+      // Upload files (images + general attachments)
+      for (const filePath of filePaths) {
         try {
           await this.app.client.filesUploadV2({
             channel_id: channelId,
-            file: fs.createReadStream(imgPath),
-            filename: path.basename(imgPath),
+            file: fs.createReadStream(filePath),
+            filename: path.basename(filePath),
           });
-          logger.info({ jid, path: imgPath }, 'Slack image uploaded');
+          logger.info({ jid, path: filePath }, 'Slack file uploaded');
         } catch (err) {
-          logger.warn({ jid, path: imgPath, err }, 'Failed to upload image');
+          logger.warn({ jid, path: filePath, err }, 'Failed to upload file');
         }
       }
 
@@ -368,7 +369,7 @@ export class SlackChannel implements Channel {
         {
           jid,
           textLength: messageText?.length ?? 0,
-          images: imagePaths.length,
+          files: filePaths.length,
         },
         'Slack message sent',
       );
@@ -507,7 +508,6 @@ export class SlackChannel implements Channel {
       const mime = file.mimetype || this.inferMimeFromName(file.name);
       const isImage = IMAGE_MIMETYPES.has(mime);
       const isAudio = isAudioMimetype(mime);
-      if (!isImage && !isAudio) continue;
 
       try {
         const filePath = await this.downloadSlackFile(file);
@@ -527,6 +527,9 @@ export class SlackChannel implements Channel {
           } else {
             tags.push(`[Audio: ${filePath} (transcription unavailable)]`);
           }
+        } else {
+          // General file (PDF, documents, etc.)
+          tags.push(`[File: ${filePath}]`);
         }
       } catch (err) {
         logger.warn({ fileId: file.id, err }, 'Error processing Slack file');
@@ -636,16 +639,23 @@ export class SlackChannel implements Channel {
    * Extract image paths from agent output text.
    * Parses [Image: /path] tags and markdown image links.
    */
-  private extractImagePaths(text: string): {
+  private extractFilePaths(text: string): {
     cleanText: string;
-    imagePaths: string[];
+    filePaths: string[];
   } {
-    const imagePaths: string[] = [];
+    const filePaths: string[] = [];
 
     // Extract [Image: /path] tags
     let cleaned = text.replace(IMAGE_TAG_RE, (_, imgPath: string) => {
       const p = imgPath.trim();
-      if (fs.existsSync(p)) imagePaths.push(p);
+      if (fs.existsSync(p)) filePaths.push(p);
+      return '';
+    });
+
+    // Extract [File: /path] tags
+    cleaned = cleaned.replace(FILE_TAG_RE, (_, filePath: string) => {
+      const p = filePath.trim();
+      if (fs.existsSync(p)) filePaths.push(p);
       return '';
     });
 
@@ -653,13 +663,13 @@ export class SlackChannel implements Channel {
     cleaned = cleaned.replace(MD_IMAGE_LINK_RE, (match, linkPath: string) => {
       const p = linkPath.trim();
       if (IMAGE_EXTS.test(p) && fs.existsSync(p)) {
-        imagePaths.push(p);
+        filePaths.push(p);
         return '';
       }
       return match;
     });
 
-    return { cleanText: cleaned.trim(), imagePaths };
+    return { cleanText: cleaned.trim(), filePaths };
   }
 
   /**
