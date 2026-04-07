@@ -185,8 +185,6 @@ export class ClaudeAdapter implements SdkAdapter {
               newSessionId,
             });
           }
-          // End stream so query() finishes this turn; next turn handled by index.ts loop
-          stream.end();
         }
       }
     } finally {

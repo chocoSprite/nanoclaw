@@ -163,6 +163,26 @@ function buildVolumeMounts(
     // (Apple Container only supports directory mounts, not file mounts,
     // so we can't shadow .env with a /dev/null file mount here)
 
+    // Main gets writable store access (SQLite direct access)
+    const storeDir = path.join(projectRoot, 'store');
+    if (fs.existsSync(storeDir)) {
+      mounts.push({
+        hostPath: storeDir,
+        containerPath: '/workspace/project/store',
+        readonly: false,
+      });
+    }
+
+    // Main gets writable global memory (can update shared context)
+    const globalDir = path.join(GROUPS_DIR, 'global');
+    if (fs.existsSync(globalDir)) {
+      mounts.push({
+        hostPath: globalDir,
+        containerPath: '/workspace/global',
+        readonly: false,
+      });
+    }
+
     // Main also gets its group folder as the working directory
     mounts.push({
       hostPath: groupDir,
@@ -205,13 +225,20 @@ function buildVolumeMounts(
     // Seed Claude SDK settings with experimental features
     const settingsFile = path.join(groupSessionsDir, 'settings.json');
     if (!fs.existsSync(settingsFile)) {
-      fs.writeFileSync(settingsFile, JSON.stringify({
-        env: {
-          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
-          CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
-          CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
-        },
-      }, null, 2) + '\n');
+      fs.writeFileSync(
+        settingsFile,
+        JSON.stringify(
+          {
+            env: {
+              CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+              CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+              CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+            },
+          },
+          null,
+          2,
+        ) + '\n',
+      );
     }
     // Claude OAuth is handled in buildContainerArgs (keychain → CLAUDE_CODE_OAUTH_TOKEN).
   } else {
@@ -345,10 +372,7 @@ async function buildContainerArgs(
     // OneCLI injects ANTHROPIC_API_KEY=placeholder by default — strip it unconditionally.
     // Neither Codex nor Claude SDK uses this; Codex uses OpenAI, Claude uses OAuth.
     for (let i = args.length - 1; i >= 0; i--) {
-      if (
-        args[i] === '-e' &&
-        args[i + 1]?.startsWith('ANTHROPIC_API_KEY=')
-      ) {
+      if (args[i] === '-e' && args[i + 1]?.startsWith('ANTHROPIC_API_KEY=')) {
         args.splice(i, 2);
       }
     }
