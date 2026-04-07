@@ -49,6 +49,7 @@ export interface RegisteredGroup {
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
   reviewConfig?: ReviewConfig; // Auto-review cycle config (multi-agent channels)
   sdk?: 'codex' | 'claude'; // Which AI SDK to use (default: 'codex')
+  model?: string; // Model override for Claude SDK (e.g. 'claude-opus-4-6')
 }
 
 export interface NewMessage {

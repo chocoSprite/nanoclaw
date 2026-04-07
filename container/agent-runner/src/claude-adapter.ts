@@ -123,6 +123,7 @@ export class ClaudeAdapter implements SdkAdapter {
 
     const queryOptions = {
       cwd: '/workspace/group',
+      model: this.containerInput.model,
       additionalDirectories: this.extraDirs.length > 0 ? this.extraDirs : undefined,
       resume: options.sessionId,
       resumeSessionAt: options.resumeAt,

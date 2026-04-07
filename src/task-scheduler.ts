@@ -182,6 +182,7 @@ async function runTask(
         assistantName: ASSISTANT_NAME,
         script: task.script || undefined,
         sdk: group.sdk ?? 'codex',
+        model: group.model,
       },
       (proc, containerName) =>
         deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),

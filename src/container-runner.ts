@@ -45,6 +45,7 @@ export interface ContainerInput {
   assistantName?: string;
   script?: string;
   sdk?: 'codex' | 'claude';
+  model?: string;
 }
 
 export interface ContainerOutput {

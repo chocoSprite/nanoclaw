@@ -427,6 +427,7 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
         sdk: group.sdk ?? 'codex',
+        model: group.model,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
