@@ -281,39 +281,47 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // --- Session command interception (before trigger check) ---
   // Only Claude SDK groups support session commands (/compact)
-  const cmdResult = group.sdk === 'claude' ? await handleSessionCommand({
-    missedMessages,
-    isMainGroup,
-    groupName: group.name,
-    triggerPattern: getTriggerPattern(group.trigger),
-    timezone: TIMEZONE,
-    deps: {
-      sendMessage: (text) => channel.sendMessage(chatJid, text),
-      setTyping: (typing) =>
-        channel.setTyping?.(chatJid, typing) ?? Promise.resolve(),
-      runAgent: (prompt, onOutput) =>
-        runAgent(group, prompt, chatJid, onOutput),
-      closeStdin: () => queue.closeStdin(chatJid),
-      advanceCursor: (ts) => {
-        lastAgentTimestamp[chatJid] = ts;
-        saveState();
-      },
-      formatMessages,
-      canSenderInteract: (msg) => {
-        const hasTrigger = getTriggerPattern(group.trigger).test(
-          msg.content.trim(),
-        );
-        const reqTrigger = !isMainGroup && group.requiresTrigger !== false;
-        return (
-          isMainGroup ||
-          !reqTrigger ||
-          (hasTrigger &&
-            (msg.is_from_me ||
-              isTriggerAllowed(chatJid, msg.sender, loadSenderAllowlist())))
-        );
-      },
-    },
-  }) : null;
+  const cmdResult =
+    group.sdk === 'claude'
+      ? await handleSessionCommand({
+          missedMessages,
+          isMainGroup,
+          groupName: group.name,
+          triggerPattern: getTriggerPattern(group.trigger),
+          timezone: TIMEZONE,
+          deps: {
+            sendMessage: (text) => channel.sendMessage(chatJid, text),
+            setTyping: (typing) =>
+              channel.setTyping?.(chatJid, typing) ?? Promise.resolve(),
+            runAgent: (prompt, onOutput) =>
+              runAgent(group, prompt, chatJid, onOutput),
+            closeStdin: () => queue.closeStdin(chatJid),
+            advanceCursor: (ts) => {
+              lastAgentTimestamp[chatJid] = ts;
+              saveState();
+            },
+            formatMessages,
+            canSenderInteract: (msg) => {
+              const hasTrigger = getTriggerPattern(group.trigger).test(
+                msg.content.trim(),
+              );
+              const reqTrigger =
+                !isMainGroup && group.requiresTrigger !== false;
+              return (
+                isMainGroup ||
+                !reqTrigger ||
+                (hasTrigger &&
+                  (msg.is_from_me ||
+                    isTriggerAllowed(
+                      chatJid,
+                      msg.sender,
+                      loadSenderAllowlist(),
+                    )))
+              );
+            },
+          },
+        })
+      : null;
   if (cmdResult?.handled) return cmdResult.success;
   // --- End session command interception ---
 
@@ -562,13 +570,16 @@ async function startMessageLoop(): Promise<void> {
         const formatted = formatMessages(pending, TIMEZONE);
 
         // --- Session command interception (message loop, Claude SDK only) ---
-        const loopCmdMsg = group.sdk === 'claude' ? pending.find(
-          (m) =>
-            extractSessionCommand(
-              m.content,
-              getTriggerPattern(group.trigger),
-            ) !== null,
-        ) : null;
+        const loopCmdMsg =
+          group.sdk === 'claude'
+            ? pending.find(
+                (m) =>
+                  extractSessionCommand(
+                    m.content,
+                    getTriggerPattern(group.trigger),
+                  ) !== null,
+              )
+            : null;
 
         if (loopCmdMsg) {
           if (
@@ -725,7 +736,8 @@ async function main(): Promise<void> {
         pending.push(`태스크 ${qs.pendingTaskCount}개 대기`);
       const suffix = pending.length > 0 ? ` (${pending.join(', ')})` : '';
       const mainTag = g.isMain ? ' :star:' : '';
-      return `${icon} *${g.name}*${mainTag} — ${detail}${suffix}`;
+      const sdkTag = g.sdk === 'claude' ? ' `Claude`' : ' `Codex`';
+      return `${icon} *${g.name}*${mainTag}${sdkTag} — ${detail}${suffix}`;
     });
 
     // Scheduled tasks
