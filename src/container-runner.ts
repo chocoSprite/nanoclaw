@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in containers and handles IPC
  */
-import { ChildProcess, exec, spawn } from 'child_process';
+import { ChildProcess, exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -44,6 +44,7 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
+  sdk?: 'codex' | 'claude';
 }
 
 export interface ContainerOutput {
@@ -148,7 +149,7 @@ function buildVolumeMounts(
 
   if (isMain) {
     // Main gets the project root read-only. Writable paths the agent needs
-    // (group folder, IPC, .codex/) are mounted separately below.
+    // (group folder, IPC, SDK sessions) are mounted separately below.
     // Read-only prevents the agent from modifying host application code
     // (src/, dist/, package.json, etc.) which would bypass the sandbox
     // entirely on next restart.
@@ -188,35 +189,52 @@ function buildVolumeMounts(
     }
   }
 
-  // Per-group Codex sessions directory (isolated from other groups)
-  // Each group gets their own .codex/ to prevent cross-group session access
+  // Per-group SDK sessions directory (isolated from other groups)
+  // Each group gets their own .codex/ or .claude/ to prevent cross-group session access
+  const sdkType = group.sdk ?? 'codex';
+  const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
   const groupSessionsDir = path.join(
     DATA_DIR,
     'sessions',
     group.folder,
-    '.codex',
+    sdkDirName,
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
 
-  // Seed group session from host Codex login so subscription users don't need API keys.
-  // Copy auth.json (OAuth tokens) and config.toml (model/MCP settings).
-  // Only overwrite if host file is newer (preserves container-refreshed tokens).
-  const hostCodexDir = path.join(os.homedir(), '.codex');
-  for (const file of ['auth.json', 'config.toml']) {
-    const hostFile = path.join(hostCodexDir, file);
-    const groupFile = path.join(groupSessionsDir, file);
-    if (fs.existsSync(hostFile)) {
-      const hostMtime = fs.statSync(hostFile).mtimeMs;
-      const groupMtime = fs.existsSync(groupFile)
-        ? fs.statSync(groupFile).mtimeMs
-        : 0;
-      if (hostMtime > groupMtime) {
-        fs.copyFileSync(hostFile, groupFile);
+  if (sdkType === 'claude') {
+    // Seed Claude SDK settings with experimental features
+    const settingsFile = path.join(groupSessionsDir, 'settings.json');
+    if (!fs.existsSync(settingsFile)) {
+      fs.writeFileSync(settingsFile, JSON.stringify({
+        env: {
+          CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+          CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: '1',
+          CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0',
+        },
+      }, null, 2) + '\n');
+    }
+    // Claude OAuth is handled in buildContainerArgs (keychain → CLAUDE_CODE_OAUTH_TOKEN).
+  } else {
+    // Seed group session from host Codex login so subscription users don't need API keys.
+    // Copy auth.json (OAuth tokens) and config.toml (model/MCP settings).
+    // Only overwrite if host file is newer (preserves container-refreshed tokens).
+    const hostCodexDir = path.join(os.homedir(), '.codex');
+    for (const file of ['auth.json', 'config.toml']) {
+      const hostFile = path.join(hostCodexDir, file);
+      const groupFile = path.join(groupSessionsDir, file);
+      if (fs.existsSync(hostFile)) {
+        const hostMtime = fs.statSync(hostFile).mtimeMs;
+        const groupMtime = fs.existsSync(groupFile)
+          ? fs.statSync(groupFile).mtimeMs
+          : 0;
+        if (hostMtime > groupMtime) {
+          fs.copyFileSync(hostFile, groupFile);
+        }
       }
     }
   }
 
-  // Sync skills from container/skills/ into each group's .codex/skills/
+  // Sync skills from container/skills/ into each group's SDK skills dir
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
   const skillsDst = path.join(groupSessionsDir, 'skills');
   if (fs.existsSync(skillsSrc)) {
@@ -229,7 +247,7 @@ function buildVolumeMounts(
   }
   mounts.push({
     hostPath: groupSessionsDir,
-    containerPath: '/home/node/.codex',
+    containerPath: `/home/node/${sdkDirName}`,
     readonly: false,
   });
 
@@ -261,13 +279,17 @@ function buildVolumeMounts(
     'agent-runner-src',
   );
   if (fs.existsSync(agentRunnerSrc)) {
-    const srcIndex = path.join(agentRunnerSrc, 'index.ts');
-    const cachedIndex = path.join(groupAgentRunnerDir, 'index.ts');
+    // Check if any source file is newer than its cached copy
     const needsCopy =
       !fs.existsSync(groupAgentRunnerDir) ||
-      !fs.existsSync(cachedIndex) ||
-      (fs.existsSync(srcIndex) &&
-        fs.statSync(srcIndex).mtimeMs > fs.statSync(cachedIndex).mtimeMs);
+      fs.readdirSync(agentRunnerSrc).some((file) => {
+        const srcFile = path.join(agentRunnerSrc, file);
+        const cachedFile = path.join(groupAgentRunnerDir, file);
+        return (
+          !fs.existsSync(cachedFile) ||
+          fs.statSync(srcFile).mtimeMs > fs.statSync(cachedFile).mtimeMs
+        );
+      });
     if (needsCopy) {
       fs.cpSync(agentRunnerSrc, groupAgentRunnerDir, { recursive: true });
     }
@@ -305,6 +327,7 @@ async function buildContainerArgs(
   containerName: string,
   isMain: boolean,
   agentIdentifier?: string,
+  sdk?: 'codex' | 'claude',
 ): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -319,6 +342,46 @@ async function buildContainerArgs(
   });
   if (onecliApplied) {
     normalizeOneCLIMounts(args);
+    // OneCLI injects ANTHROPIC_API_KEY=placeholder by default — strip it unconditionally.
+    // Neither Codex nor Claude SDK uses this; Codex uses OpenAI, Claude uses OAuth.
+    for (let i = args.length - 1; i >= 0; i--) {
+      if (
+        args[i] === '-e' &&
+        args[i + 1]?.startsWith('ANTHROPIC_API_KEY=')
+      ) {
+        args.splice(i, 2);
+      }
+    }
+    // Claude SDK: inject OAuth token from macOS keychain.
+    // OneCLI proxy is kept for other services (kakao, etc).
+    if (sdk === 'claude') {
+      // Remove any CLAUDE_CODE_OAUTH_TOKEN placeholder from OneCLI
+      for (let i = args.length - 1; i >= 0; i--) {
+        if (
+          args[i] === '-e' &&
+          args[i + 1]?.startsWith('CLAUDE_CODE_OAUTH_TOKEN=')
+        ) {
+          args.splice(i, 2);
+        }
+      }
+      try {
+        const creds = JSON.parse(
+          execSync(
+            'security find-generic-password -s "Claude Code-credentials" -w',
+            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
+          ).trim(),
+        );
+        const oauthToken = creds?.claudeAiOauth?.accessToken;
+        if (oauthToken) {
+          args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`);
+        }
+      } catch (err) {
+        logger.warn(
+          { containerName, err: String(err) },
+          'Failed to read Claude OAuth token from keychain',
+        );
+      }
+    }
     logger.info({ containerName }, 'OneCLI gateway config applied');
   } else {
     logger.warn(
@@ -383,6 +446,7 @@ export async function runContainerAgent(
     containerName,
     input.isMain,
     agentIdentifier,
+    input.sdk,
   );
 
   logger.debug(

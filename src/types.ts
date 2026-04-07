@@ -48,6 +48,7 @@ export interface RegisteredGroup {
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
   reviewConfig?: ReviewConfig; // Auto-review cycle config (multi-agent channels)
+  sdk?: 'codex' | 'claude'; // Which AI SDK to use (default: 'codex')
 }
 
 export interface NewMessage {
