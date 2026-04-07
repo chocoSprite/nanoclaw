@@ -21,7 +21,7 @@ import {
   writeOutput, log, drainIpcInput, shouldClose,
   IPC_POLL_MS,
 } from './shared.js';
-import type { SdkAdapter, SdkInitOptions, RunQueryOptions, RunQueryResult } from './sdk-adapter.js';
+import type { SdkAdapter, SdkInitOptions, RunQueryOptions, RunQueryResult, RunCompactResult } from './sdk-adapter.js';
 import type { ContainerInput } from './shared.js';
 
 /**
@@ -194,6 +194,72 @@ export class ClaudeAdapter implements SdkAdapter {
 
     log(`Query done. Results: ${resultCount}, closedDuringQuery: ${closedDuringQuery}`);
     return { newSessionId, lastAssistantUuid, resultText, closedDuringQuery };
+  }
+
+  async runCompact(sessionId?: string): Promise<RunCompactResult | null> {
+    let slashSessionId: string | undefined;
+    let compactBoundarySeen = false;
+    let hadError = false;
+    let resultText: string | null = null;
+
+    const sdkEnv: Record<string, string | undefined> = {
+      ...process.env,
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '165000',
+    };
+
+    try {
+      for await (const message of query({
+        prompt: '/compact',
+        options: {
+          cwd: '/workspace/group',
+          resume: sessionId,
+          systemPrompt: undefined,
+          allowedTools: [],
+          env: sdkEnv,
+          permissionMode: 'bypassPermissions' as const,
+          allowDangerouslySkipPermissions: true,
+          settingSources: ['project', 'user'] as ('project' | 'user')[],
+          hooks: {
+            PreCompact: [{ hooks: [this.createPreCompactHook()] }],
+          },
+        },
+      })) {
+        const msg = message as Record<string, unknown>;
+        const msgType = msg.type === 'system'
+          ? `system/${msg.subtype}`
+          : msg.type;
+        log(`[compact] type=${msgType}`);
+
+        if (msg.type === 'system' && msg.subtype === 'init') {
+          slashSessionId = msg.session_id as string;
+          log(`Session after compact: ${slashSessionId}`);
+        }
+
+        if (msg.type === 'system' && msg.subtype === 'compact_boundary') {
+          compactBoundarySeen = true;
+          log('Compact boundary observed — compaction completed');
+        }
+
+        if (msg.type === 'result') {
+          const text = (msg.result as string) || '';
+          if ((msg.subtype as string)?.startsWith('error')) {
+            hadError = true;
+          } else {
+            resultText = text || 'Conversation compacted.';
+          }
+        }
+      }
+    } catch (err) {
+      hadError = true;
+      log(`Compact error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    log(`Compact done. boundarySeen=${compactBoundarySeen}, hadError=${hadError}`);
+    if (!hadError && !compactBoundarySeen) {
+      log('WARNING: compact_boundary was not observed. Compaction may not have completed.');
+    }
+
+    return { newSessionId: slashSessionId, compactBoundarySeen, hadError, resultText };
   }
 
   private createPreCompactHook(): HookCallback {

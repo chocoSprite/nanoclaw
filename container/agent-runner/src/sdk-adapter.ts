@@ -16,6 +16,19 @@ export interface SdkAdapter {
    * - Claude: MessageStream push for mid-turn injection, close → stream.end()
    */
   runQuery(prompt: string, options: RunQueryOptions): Promise<RunQueryResult>;
+
+  /**
+   * Run a /compact session command. Claude only — Codex returns null (no-op).
+   * Returns the new session ID after compaction, or null if not supported.
+   */
+  runCompact?(sessionId?: string): Promise<RunCompactResult | null>;
+}
+
+export interface RunCompactResult {
+  newSessionId?: string;
+  compactBoundarySeen: boolean;
+  hadError: boolean;
+  resultText: string | null;
 }
 
 export interface SdkInitOptions {
