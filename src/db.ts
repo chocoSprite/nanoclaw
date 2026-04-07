@@ -146,9 +146,7 @@ function createSchema(database: Database.Database): void {
 
   // Add model column if it doesn't exist (migration for model selection)
   try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN model TEXT`,
-    );
+    database.exec(`ALTER TABLE registered_groups ADD COLUMN model TEXT`);
   } catch {
     /* column already exists */
   }
