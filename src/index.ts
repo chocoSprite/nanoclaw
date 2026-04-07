@@ -35,6 +35,7 @@ import {
   getAllRegisteredGroups,
   getAllSessions,
   getAllTasks,
+  deleteSession,
   getLastBotMessageTimestamp,
   getMessagesSince,
   getRouterState,
@@ -437,6 +438,22 @@ async function runAgent(
     if (output.newSessionId) {
       sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
+    }
+
+    // Clean up stale sessions so the next attempt starts fresh
+    const isStaleSession =
+      sessionId &&
+      output.error &&
+      /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(
+        output.error,
+      );
+    if (isStaleSession) {
+      logger.warn(
+        { group: group.name, sessionId },
+        'Stale session detected, clearing',
+      );
+      delete sessions[group.folder];
+      deleteSession(group.folder);
     }
 
     if (output.status === 'error') {
