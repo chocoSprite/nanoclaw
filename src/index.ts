@@ -280,7 +280,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   }
 
   // --- Session command interception (before trigger check) ---
-  const cmdResult = await handleSessionCommand({
+  // Only Claude SDK groups support session commands (/compact)
+  const cmdResult = group.sdk === 'claude' ? await handleSessionCommand({
     missedMessages,
     isMainGroup,
     groupName: group.name,
@@ -312,8 +313,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         );
       },
     },
-  });
-  if (cmdResult.handled) return cmdResult.success;
+  }) : null;
+  if (cmdResult?.handled) return cmdResult.success;
   // --- End session command interception ---
 
   // For non-main groups, check if trigger is required and present
@@ -560,14 +561,14 @@ async function startMessageLoop(): Promise<void> {
 
         const formatted = formatMessages(pending, TIMEZONE);
 
-        // --- Session command interception (message loop) ---
-        const loopCmdMsg = pending.find(
+        // --- Session command interception (message loop, Claude SDK only) ---
+        const loopCmdMsg = group.sdk === 'claude' ? pending.find(
           (m) =>
             extractSessionCommand(
               m.content,
               getTriggerPattern(group.trigger),
             ) !== null,
-        );
+        ) : null;
 
         if (loopCmdMsg) {
           if (

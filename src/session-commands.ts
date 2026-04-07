@@ -11,6 +11,8 @@ export function extractSessionCommand(
 ): string | null {
   let text = content.trim();
   text = text.replace(triggerPattern, '').trim();
+  // Strip Slack user mentions (e.g. <@U0AQE91LHKL>) that may follow the trigger
+  text = text.replace(/<@[A-Z0-9]+>/g, '').trim();
   if (text === '/compact') return '/compact';
   return null;
 }
@@ -85,11 +87,12 @@ export async function handleSessionCommand(opts: {
 
   if (!command || !cmdMsg) return { handled: false };
 
-  if (!isSessionCommandAllowed(isMainGroup, cmdMsg.is_from_me === true)) {
-    // DENIED: send denial if the sender would normally be allowed to interact,
-    // then silently consume the command by advancing the cursor past it.
-    // Trade-off: other messages in the same batch are also consumed (cursor is
-    // a high-water mark). Acceptable for this narrow edge case.
+  // /compact is always allowed — it's a non-destructive session management command.
+  // Other future session commands may need stricter auth.
+  if (
+    command !== '/compact' &&
+    !isSessionCommandAllowed(isMainGroup, cmdMsg.is_from_me === true)
+  ) {
     if (deps.canSenderInteract(cmdMsg)) {
       await deps.sendMessage('Session commands require admin access.');
     }
