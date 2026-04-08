@@ -5,6 +5,7 @@ import { OneCLI } from '@onecli-sh/sdk';
 
 import {
   ASSISTANT_NAME,
+  DATA_DIR,
   DEFAULT_TRIGGER,
   getTriggerPattern,
   GROUPS_DIR,
@@ -497,7 +498,7 @@ async function runAgent(
     const isStaleSession =
       sessionId &&
       output.error &&
-      /no conversation found|ENOENT.*\.jsonl|session.*not found/i.test(
+      /no conversation found|ENOENT.*\.jsonl|session.*not found|no rollout found/i.test(
         output.error,
       );
     if (isStaleSession) {
@@ -705,6 +706,143 @@ async function main(): Promise<void> {
     }
   }
 
+  // --- Session reset command ---
+
+  /**
+   * Match user input to a registered group.
+   * Accepts: short name (agent-meeting-notes), full folder (slack_agent_meeting_notes), or display name (패트).
+   */
+  function findGroupByInput(
+    input: string,
+  ): [string, RegisteredGroup] | null {
+    const normalized = input.trim().toLowerCase().replace(/-/g, '_');
+    for (const [jid, group] of Object.entries(registeredGroups)) {
+      if (group.folder.toLowerCase() === normalized) return [jid, group];
+      const unprefixed = group.folder.replace(
+        /^(slack|whatsapp|telegram|discord)_/,
+        '',
+      );
+      if (unprefixed.toLowerCase() === normalized) return [jid, group];
+      if (group.name.toLowerCase() === input.trim().toLowerCase())
+        return [jid, group];
+    }
+    return null;
+  }
+
+  /**
+   * Reset a group's session: terminate container, clear in-memory + DB + SDK files.
+   * Preserves agent memory, auth, config, and skills.
+   */
+  async function handleSessionReset(
+    chatJid: string,
+    targetInput: string,
+  ): Promise<void> {
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+
+    const match = findGroupByInput(targetInput);
+    if (!match) {
+      const list = Object.values(registeredGroups)
+        .map(
+          (g) =>
+            `  ${g.folder.replace(/^(slack|whatsapp|telegram|discord)_/, '').replace(/_/g, '-')} (${g.name})`,
+        )
+        .join('\n');
+      await channel.sendMessage(
+        chatJid,
+        `그룹을 찾을 수 없습니다: ${targetInput}\n\n사용 가능:\n${list}`,
+      );
+      return;
+    }
+
+    const [targetJid, group] = match;
+    const sdkType = group.sdk ?? 'codex';
+    const errors: string[] = [];
+
+    // 1. Terminate running container
+    await queue.terminateGroup(targetJid);
+
+    // 2. Clear in-memory session
+    delete sessions[group.folder];
+
+    // 3. Clear DB session record
+    deleteSession(group.folder);
+
+    // 4. Clean SDK session files on disk
+    const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
+    const sdkBase = path.join(DATA_DIR, 'sessions', group.folder, sdkDirName);
+
+    if (sdkType === 'codex') {
+      // Codex: delete sessions/ dir + state_5.sqlite*
+      for (const target of ['sessions']) {
+        const p = path.join(sdkBase, target);
+        try {
+          if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
+        } catch (err) {
+          errors.push(`${target}: ${err}`);
+        }
+      }
+      // Delete state_5.sqlite and WAL/SHM files
+      const sdkEntries = fs.existsSync(sdkBase) ? fs.readdirSync(sdkBase) : [];
+      for (const f of sdkEntries.filter((n) => n.startsWith('state_5.sqlite'))) {
+        try {
+          fs.unlinkSync(path.join(sdkBase, f));
+        } catch (err) {
+          errors.push(`${f}: ${err}`);
+        }
+      }
+    } else {
+      // Claude: delete sessions/, backups/, and project session files (preserve memory/)
+      for (const dir of ['sessions', 'backups']) {
+        const p = path.join(sdkBase, dir);
+        try {
+          if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
+        } catch (err) {
+          errors.push(`${dir}: ${err}`);
+        }
+      }
+      // Clean projects: delete *.jsonl and subagents/ but preserve memory/
+      const projectsDir = path.join(sdkBase, 'projects');
+      if (fs.existsSync(projectsDir)) {
+        const walk = (dir: string): void => {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.name === 'memory') continue; // preserve
+            if (entry.isDirectory()) {
+              if (entry.name === 'subagents') {
+                try {
+                  fs.rmSync(full, { recursive: true });
+                } catch (err) {
+                  errors.push(`subagents: ${err}`);
+                }
+              } else {
+                walk(full);
+              }
+            } else if (entry.name.endsWith('.jsonl')) {
+              try {
+                fs.unlinkSync(full);
+              } catch (err) {
+                errors.push(`${entry.name}: ${err}`);
+              }
+            }
+          }
+        };
+        walk(projectsDir);
+      }
+    }
+
+    const status =
+      errors.length === 0 ? 'OK' : `부분 성공 (${errors.join(', ')})`;
+    logger.info(
+      { group: group.name, folder: group.folder, sdk: sdkType, errors },
+      'Session reset',
+    );
+    await channel.sendMessage(
+      chatJid,
+      `:arrows_counterclockwise: *세션 초기화 완료*\n그룹: *${group.name}* (${group.folder})\nSDK: ${sdkType}\n상태: ${status}`,
+    );
+  }
+
   // Handle "랩대시보드" — respond with host-side status snapshot, no container
   async function handleLabDashboard(chatJid: string): Promise<void> {
     const channel = findChannel(channels, chatJid);
@@ -835,6 +973,20 @@ async function main(): Promise<void> {
           logger.error({ err, chatJid }, 'Lab dashboard error'),
         );
         return;
+      }
+
+      // Session reset — intercept before storage, main group only
+      if (
+        trimmed.startsWith('세션초기화 ') &&
+        registeredGroups[chatJid]?.isMain
+      ) {
+        const targetInput = trimmed.slice('세션초기화 '.length).trim();
+        if (targetInput) {
+          handleSessionReset(chatJid, targetInput).catch((err) =>
+            logger.error({ err, chatJid }, 'Session reset error'),
+          );
+          return;
+        }
       }
 
       // Remote control commands — intercept before storage

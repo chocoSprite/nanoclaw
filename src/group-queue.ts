@@ -198,6 +198,29 @@ export class GroupQueue {
     }
   }
 
+  /**
+   * Terminate a running container for a group: signal close, then wait for exit (with timeout).
+   */
+  async terminateGroup(groupJid: string): Promise<void> {
+    const state = this.getGroup(groupJid);
+    if (!state.active || !state.process) return;
+
+    this.closeStdin(groupJid);
+
+    if (!state.process.killed) {
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          state.process?.kill('SIGKILL');
+          resolve();
+        }, 10_000);
+        state.process!.on('close', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+  }
+
   private async runForGroup(
     groupJid: string,
     reason: 'messages' | 'drain',
