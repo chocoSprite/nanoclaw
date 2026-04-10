@@ -340,12 +340,16 @@ export class SlackChannel implements Channel {
           await this.app.client.chat.postMessage({
             channel: channelId,
             text: messageText,
+            unfurl_links: false,
+            unfurl_media: false,
           });
         } else {
           for (let i = 0; i < messageText.length; i += MAX_MESSAGE_LENGTH) {
             await this.app.client.chat.postMessage({
               channel: channelId,
               text: messageText.slice(i, i + MAX_MESSAGE_LENGTH),
+              unfurl_links: false,
+              unfurl_media: false,
             });
           }
         }

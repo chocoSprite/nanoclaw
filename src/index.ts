@@ -712,9 +712,7 @@ async function main(): Promise<void> {
    * Match user input to a registered group.
    * Accepts: short name (agent-meeting-notes), full folder (slack_agent_meeting_notes), or display name (패트).
    */
-  function findGroupByInput(
-    input: string,
-  ): [string, RegisteredGroup] | null {
+  function findGroupByInput(input: string): [string, RegisteredGroup] | null {
     const normalized = input.trim().toLowerCase().replace(/-/g, '_');
     for (const [jid, group] of Object.entries(registeredGroups)) {
       if (group.folder.toLowerCase() === normalized) return [jid, group];
@@ -745,7 +743,7 @@ async function main(): Promise<void> {
       const list = Object.values(registeredGroups)
         .map(
           (g) =>
-            `  ${g.folder.replace(/^(slack|whatsapp|telegram|discord)_/, '').replace(/_/g, '-')} (${g.name})`,
+            `  ${g.folder}`,
         )
         .join('\n');
       await channel.sendMessage(
@@ -784,7 +782,9 @@ async function main(): Promise<void> {
       }
       // Delete state_5.sqlite and WAL/SHM files
       const sdkEntries = fs.existsSync(sdkBase) ? fs.readdirSync(sdkBase) : [];
-      for (const f of sdkEntries.filter((n) => n.startsWith('state_5.sqlite'))) {
+      for (const f of sdkEntries.filter((n) =>
+        n.startsWith('state_5.sqlite'),
+      )) {
         try {
           fs.unlinkSync(path.join(sdkBase, f));
         } catch (err) {
@@ -891,9 +891,7 @@ async function main(): Promise<void> {
       const nextRun = t.next_run
         ? new Date(t.next_run).toLocaleString('ko-KR', { timeZone: TIMEZONE })
         : '—';
-      const groupName = t.group_folder
-        .replace(/^(slack|whatsapp|telegram|discord)_/, '')
-        .replace(/_/g, '-');
+      const groupName = t.group_folder;
       let schedLabel = t.schedule_value;
       if (t.schedule_type === 'cron') {
         const parts = t.schedule_value.split(' ');
