@@ -21,10 +21,7 @@ import {
   getRegisteredChannelNames,
 } from './channels/registry.js';
 import { startSessionCleanup } from './session-cleanup.js';
-import {
-  handleSessionReset,
-  handleSessionResetAll,
-} from './session-reset.js';
+import { handleSessionReset, handleSessionResetAll } from './session-reset.js';
 import type { SessionResetDeps, SessionHandlerDeps } from './session-reset.js';
 import {
   ContainerOutput,
@@ -210,6 +207,13 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
 
   // Ensure a corresponding OneCLI agent exists (best-effort, non-blocking)
   ensureOneCLIAgent(jid, group);
+
+  // Update groups snapshot for all groups (new group is now visible)
+  const availGroups = getAvailableGroups();
+  const rjids = new Set(Object.keys(registeredGroups));
+  for (const g of Object.values(registeredGroups)) {
+    writeGroupsSnapshot(g.folder, g.isMain === true, availGroups, rjids);
+  }
 
   logger.info(
     { jid, name: group.name, folder: group.folder },
@@ -452,32 +456,6 @@ async function runAgent(
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
-
-  // Update tasks snapshot for container to read (filtered by group)
-  const tasks = getAllTasks();
-  writeTasksSnapshot(
-    group.folder,
-    isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      script: t.script || undefined,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    })),
-  );
-
-  // Update available groups snapshot (main group only can see all groups)
-  const availableGroups = getAvailableGroups();
-  writeGroupsSnapshot(
-    group.folder,
-    isMain,
-    availableGroups,
-    new Set(Object.keys(registeredGroups)),
-  );
 
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
@@ -886,6 +864,33 @@ async function main(): Promise<void> {
     },
   });
   queue.setProcessMessagesFn(processGroupMessages);
+
+  // Write initial snapshots so containers can read tasks/groups from startup
+  {
+    const initTasks = getAllTasks();
+    const initTaskRows = initTasks.map((t) => ({
+      id: t.id,
+      groupFolder: t.group_folder,
+      prompt: t.prompt,
+      script: t.script || undefined,
+      schedule_type: t.schedule_type,
+      schedule_value: t.schedule_value,
+      status: t.status,
+      next_run: t.next_run,
+    }));
+    const initAvailableGroups = getAvailableGroups();
+    const initRegisteredJids = new Set(Object.keys(registeredGroups));
+    for (const group of Object.values(registeredGroups)) {
+      writeTasksSnapshot(group.folder, group.isMain === true, initTaskRows);
+      writeGroupsSnapshot(
+        group.folder,
+        group.isMain === true,
+        initAvailableGroups,
+        initRegisteredJids,
+      );
+    }
+  }
+
   recoverPendingMessages();
   startMessageLoop().catch((err) => {
     logger.fatal({ err }, 'Message loop crashed unexpectedly');

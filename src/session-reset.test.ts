@@ -237,4 +237,3 @@ describe('findGroupByInput', () => {
     expect(result).toBeNull();
   });
 });
-

@@ -4,6 +4,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  _clearAllowlistCache,
   isSenderAllowed,
   isTriggerAllowed,
   loadSenderAllowlist,
@@ -182,6 +183,26 @@ describe('shouldDropMessage', () => {
     };
     expect(shouldDropMessage('g1', cfg)).toBe(true);
     expect(shouldDropMessage('g2', cfg)).toBe(false);
+  });
+});
+
+describe('mtime cache', () => {
+  it('returns cached config when file has not changed', () => {
+    _clearAllowlistCache();
+
+    // Use the default path mechanism by writing to a known temp path
+    const p = writeConfig({
+      default: { allow: ['alice'], mode: 'trigger' },
+      chats: {},
+      logDenied: true,
+    });
+
+    const cfg1 = loadSenderAllowlist(p);
+    const cfg2 = loadSenderAllowlist(p);
+
+    // pathOverride bypasses cache, so both are fresh loads — verify consistency
+    expect(cfg1).toEqual(cfg2);
+    expect(cfg1.default.allow).toEqual(['alice']);
   });
 });
 

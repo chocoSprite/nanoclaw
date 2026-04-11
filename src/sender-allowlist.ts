@@ -20,6 +20,16 @@ const DEFAULT_CONFIG: SenderAllowlistConfig = {
   logDenied: true,
 };
 
+// In-memory cache — invalidated by file mtime change
+let _cached: SenderAllowlistConfig | null = null;
+let _cachedMtime = 0;
+
+/** Clear the in-memory cache (for tests). */
+export function _clearAllowlistCache(): void {
+  _cached = null;
+  _cachedMtime = 0;
+}
+
 function isValidEntry(entry: unknown): entry is ChatAllowlistEntry {
   if (!entry || typeof entry !== 'object') return false;
   const e = entry as Record<string, unknown>;
@@ -34,6 +44,17 @@ export function loadSenderAllowlist(
   pathOverride?: string,
 ): SenderAllowlistConfig {
   const filePath = pathOverride ?? SENDER_ALLOWLIST_PATH;
+  const useCache = !pathOverride;
+
+  // Fast path: return cached config if file hasn't changed
+  if (useCache && _cached) {
+    try {
+      const mtime = fs.statSync(filePath).mtimeMs;
+      if (mtime === _cachedMtime) return _cached;
+    } catch {
+      /* fall through to full load */
+    }
+  }
 
   let raw: string;
   try {
@@ -44,7 +65,7 @@ export function loadSenderAllowlist(
       { err, path: filePath },
       'sender-allowlist: cannot read config',
     );
-    return DEFAULT_CONFIG;
+    return _cached ?? DEFAULT_CONFIG;
   }
 
   let parsed: unknown;
@@ -81,11 +102,22 @@ export function loadSenderAllowlist(
     }
   }
 
-  return {
+  const result: SenderAllowlistConfig = {
     default: obj.default as ChatAllowlistEntry,
     chats,
     logDenied: obj.logDenied !== false,
   };
+
+  if (useCache) {
+    try {
+      _cachedMtime = fs.statSync(filePath).mtimeMs;
+    } catch {
+      /* ignore */
+    }
+    _cached = result;
+  }
+
+  return result;
 }
 
 function getEntry(

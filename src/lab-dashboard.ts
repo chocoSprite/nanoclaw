@@ -26,7 +26,13 @@ export interface LabDashboardDeps {
 export async function buildLabDashboard(
   deps: LabDashboardDeps,
 ): Promise<string> {
-  const { registeredGroups, queueStatuses, sessionCount, activeContainerCount, timezone } = deps;
+  const {
+    registeredGroups,
+    queueStatuses,
+    sessionCount,
+    activeContainerCount,
+    timezone,
+  } = deps;
 
   const now = new Date();
   const ts = now.toLocaleString('ko-KR', { timeZone: timezone });

@@ -216,8 +216,7 @@ export async function handleSessionResetAll(
   for (const [targetJid, group] of groups) {
     const result = await resetGroupSession(targetJid, group, deps);
 
-    const status =
-      result.errors.length === 0 ? 'OK' : result.errors.join(', ');
+    const status = result.errors.length === 0 ? 'OK' : result.errors.join(', ');
     results.push(`${group.name} (${result.sdkType}): ${status}`);
     logger.info(
       {

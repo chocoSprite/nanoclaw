@@ -21,9 +21,7 @@ import { buildLabDashboard } from './lab-dashboard.js';
 import type { LabDashboardDeps, QueueStatus } from './lab-dashboard.js';
 import type { RegisteredGroup } from './types.js';
 
-function makeDeps(
-  overrides: Partial<LabDashboardDeps> = {},
-): LabDashboardDeps {
+function makeDeps(overrides: Partial<LabDashboardDeps> = {}): LabDashboardDeps {
   return {
     registeredGroups: {},
     queueStatuses: [],
@@ -44,9 +42,7 @@ function makeGroup(overrides: Partial<RegisteredGroup> = {}): RegisteredGroup {
   };
 }
 
-function makeQueueStatus(
-  overrides: Partial<QueueStatus> = {},
-): QueueStatus {
+function makeQueueStatus(overrides: Partial<QueueStatus> = {}): QueueStatus {
   return {
     jid: 'jid1',
     active: false,
