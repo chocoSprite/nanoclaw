@@ -21,6 +21,7 @@ import {
   getRegisteredChannelNames,
 } from './channels/registry.js';
 import { getCodexUsageSummary } from './codex-usage.js';
+import { startSessionCleanup } from './session-cleanup.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -482,7 +483,12 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
         sdk: group.sdk ?? 'codex',
-        model: group.model,
+        model:
+          group.sdk === 'claude' &&
+          group.model?.startsWith('claude-') &&
+          !group.model.includes('[')
+            ? `${group.model}[1m]`
+            : group.model,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -1047,6 +1053,7 @@ async function main(): Promise<void> {
   }
 
   // Start subsystems (independently of connection handler)
+  startSessionCleanup();
   startSchedulerLoop({
     registeredGroups: () => registeredGroups,
     getSessions: () => sessions,
