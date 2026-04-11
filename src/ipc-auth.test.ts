@@ -18,6 +18,7 @@ const MAIN_GROUP: RegisteredGroup = {
   trigger: 'always',
   added_at: '2024-01-01T00:00:00.000Z',
   isMain: true,
+  sdk: 'codex',
 };
 
 const OTHER_GROUP: RegisteredGroup = {
@@ -25,6 +26,7 @@ const OTHER_GROUP: RegisteredGroup = {
   folder: 'other-group',
   trigger: '@Andy',
   added_at: '2024-01-01T00:00:00.000Z',
+  sdk: 'codex',
 };
 
 const THIRD_GROUP: RegisteredGroup = {
@@ -32,6 +34,7 @@ const THIRD_GROUP: RegisteredGroup = {
   folder: 'third-group',
   trigger: '@Andy',
   added_at: '2024-01-01T00:00:00.000Z',
+  sdk: 'codex',
 };
 
 let groups: Record<string, RegisteredGroup>;

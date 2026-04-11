@@ -549,6 +549,7 @@ describe('registered group isMain', () => {
       trigger: '@Andy',
       added_at: '2024-01-01T00:00:00.000Z',
       isMain: true,
+      sdk: 'codex',
     });
 
     const groups = getAllRegisteredGroups();
@@ -564,6 +565,7 @@ describe('registered group isMain', () => {
       folder: 'whatsapp_family-chat',
       trigger: '@Andy',
       added_at: '2024-01-01T00:00:00.000Z',
+      sdk: 'codex',
     });
 
     const groups = getAllRegisteredGroups();

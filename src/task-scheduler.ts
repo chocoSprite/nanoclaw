@@ -182,7 +182,7 @@ async function runTask(
         isScheduledTask: true,
         assistantName: ASSISTANT_NAME,
         script: task.script || undefined,
-        sdk: group.sdk ?? 'codex',
+        sdk: group.sdk,
         model: resolveModel(group.sdk, group.model),
       },
       (proc, containerName) =>

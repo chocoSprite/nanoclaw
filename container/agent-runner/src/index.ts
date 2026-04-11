@@ -157,7 +157,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const sdk = containerInput.sdk ?? 'codex';
+  const sdk = containerInput.sdk;
   log(`Using SDK: ${sdk}`);
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

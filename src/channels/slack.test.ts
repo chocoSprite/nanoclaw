@@ -103,6 +103,7 @@ function createTestOpts(
         folder: 'test-channel',
         trigger: '@Jonesy',
         added_at: '2024-01-01T00:00:00.000Z',
+        sdk: 'codex' as const,
       },
     })),
     ...overrides,
@@ -358,6 +359,7 @@ describe('SlackChannel', () => {
             folder: 'dm',
             trigger: '@Jonesy',
             added_at: '2024-01-01T00:00:00.000Z',
+            sdk: 'codex' as const,
           },
         })),
       });

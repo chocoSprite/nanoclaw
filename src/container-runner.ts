@@ -61,7 +61,7 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
-  sdk?: 'codex' | 'claude';
+  sdk: 'codex' | 'claude';
   model?: string;
 }
 
@@ -229,7 +229,7 @@ function buildVolumeMounts(
 
   // Per-group SDK sessions directory (isolated from other groups)
   // Each group gets their own .codex/ or .claude/ to prevent cross-group session access
-  const sdkType = group.sdk ?? 'codex';
+  const sdkType = group.sdk;
   const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
   const groupSessionsDir = path.join(
     DATA_DIR,
@@ -372,7 +372,7 @@ async function buildContainerArgs(
   containerName: string,
   isMain: boolean,
   agentIdentifier?: string,
-  sdk?: 'codex' | 'claude',
+  sdk: 'codex' | 'claude' = 'codex',
 ): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 

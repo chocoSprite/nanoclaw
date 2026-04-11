@@ -113,6 +113,7 @@ const testGroup: RegisteredGroup = {
   folder: 'test-group',
   trigger: '@Andy',
   added_at: new Date().toISOString(),
+  sdk: 'codex',
 };
 
 const testInput = {
@@ -120,6 +121,7 @@ const testInput = {
   groupFolder: 'test-group',
   chatJid: 'test@g.us',
   isMain: false,
+  sdk: 'codex' as const,
 };
 
 function emitOutputMarker(

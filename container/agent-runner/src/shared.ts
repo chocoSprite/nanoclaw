@@ -22,7 +22,7 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   script?: string;
-  sdk?: 'codex' | 'claude';
+  sdk: 'codex' | 'claude';
   model?: string;
 }
 

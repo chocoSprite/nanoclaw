@@ -453,6 +453,7 @@ export async function processTaskIpc(
           containerConfig: data.containerConfig,
           requiresTrigger: data.requiresTrigger,
           isMain: existingGroup?.isMain,
+          sdk: existingGroup?.sdk ?? 'codex',
         });
       } else {
         logger.warn(

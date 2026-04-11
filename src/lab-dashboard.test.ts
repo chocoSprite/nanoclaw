@@ -38,6 +38,7 @@ function makeGroup(overrides: Partial<RegisteredGroup> = {}): RegisteredGroup {
     folder: 'test_group',
     trigger: '@test',
     added_at: '2026-01-01',
+    sdk: 'codex',
     ...overrides,
   };
 }

@@ -171,7 +171,7 @@ describe('resetGroupSession', () => {
     });
   });
 
-  it('defaults sdk to codex when undefined', async () => {
+  it('uses sdk from group config', async () => {
     const deps: SessionResetDeps = {
       dataDir: '/tmp/nonexistent-data',
       sessions: {},
@@ -180,11 +180,11 @@ describe('resetGroupSession', () => {
     };
 
     const group: RegisteredGroup = {
-      name: 'No SDK',
-      folder: 'no-sdk',
+      name: 'Codex SDK',
+      folder: 'codex-sdk',
       trigger: '@bot',
       added_at: '2026-01-01',
-      // sdk is undefined
+      sdk: 'codex',
     };
 
     const result = await resetGroupSession('jid', group, deps);
@@ -203,12 +203,14 @@ describe('findGroupByInput', () => {
       trigger: '@패트',
       added_at: '2026-01-01',
       isMain: true,
+      sdk: 'codex',
     },
     'slack:C002': {
       name: '매트',
       folder: 'slack_mat_news',
       trigger: '@매트',
       added_at: '2026-01-01',
+      sdk: 'codex',
     },
   };
 

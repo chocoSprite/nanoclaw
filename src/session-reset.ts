@@ -111,7 +111,7 @@ export async function resetGroupSession(
   group: RegisteredGroup,
   deps: SessionResetDeps,
 ): Promise<ResetResult> {
-  const sdkType = group.sdk ?? 'codex';
+  const sdkType = group.sdk;
 
   // 1. Terminate running container
   await deps.terminateGroup(groupJid);

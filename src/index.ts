@@ -478,7 +478,7 @@ async function runAgent(
         chatJid,
         isMain,
         assistantName: ASSISTANT_NAME,
-        sdk: group.sdk ?? 'codex',
+        sdk: group.sdk,
         model: resolveModel(group.sdk, group.model),
       },
       (proc, containerName) =>
