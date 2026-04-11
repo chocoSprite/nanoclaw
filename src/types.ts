@@ -61,6 +61,9 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
+  thread_id?: string;
+  reply_to_sender_name?: string;
+  reply_to_content?: string;
 }
 
 export interface ScheduledTask {

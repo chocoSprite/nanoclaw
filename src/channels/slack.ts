@@ -273,6 +273,11 @@ export class SlackChannel implements Channel {
         }
       }
 
+      // Detect thread replies: thread_ts present and different from ts
+      const isThreadReply = !!(
+        msg.thread_ts && msg.ts !== msg.thread_ts
+      );
+
       this.opts.onMessage(jid, {
         id: msg.ts,
         chat_jid: jid,
@@ -282,6 +287,7 @@ export class SlackChannel implements Channel {
         timestamp,
         is_from_me: isFromThisBot,
         is_bot_message: isAnyBot,
+        thread_id: isThreadReply ? msg.thread_ts : undefined,
       });
     });
   }

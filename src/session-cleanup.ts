@@ -3,7 +3,11 @@ import path from 'path';
 
 import { logger } from './logger.js';
 
-const CLEANUP_SCRIPT = path.join(process.cwd(), 'scripts', 'cleanup-sessions.sh');
+const CLEANUP_SCRIPT = path.join(
+  process.cwd(),
+  'scripts',
+  'cleanup-sessions.sh',
+);
 const INITIAL_DELAY = 30_000; // 30 seconds after startup
 const INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 

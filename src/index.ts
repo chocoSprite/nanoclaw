@@ -39,6 +39,7 @@ import {
   getAllTasks,
   deleteSession,
   getLastBotMessageTimestamp,
+  getMessageById,
   getMessagesSince,
   getRouterState,
   initDatabase,
@@ -1020,6 +1021,15 @@ async function main(): Promise<void> {
         delete botConversationCount[ch];
       }
       storeMessage(msg);
+
+      // Enrich thread replies with parent message context
+      if (msg.thread_id) {
+        const parent = getMessageById(msg.thread_id, msg.chat_jid);
+        if (parent) {
+          msg.reply_to_sender_name = parent.sender_name;
+          msg.reply_to_content = parent.content.slice(0, 300);
+        }
+      }
     },
     onChatMetadata: (
       chatJid: string,
