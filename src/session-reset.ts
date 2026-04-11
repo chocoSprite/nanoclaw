@@ -3,12 +3,20 @@ import path from 'path';
 
 import type { RegisteredGroup } from './types.js';
 
+import { logger } from './logger.js';
+
 /** Dependencies injected by the orchestrator. */
 export interface SessionResetDeps {
   dataDir: string;
   sessions: Record<string, string>;
   terminateGroup: (jid: string) => Promise<void>;
   deleteSession: (folder: string) => void;
+}
+
+/** Extended deps for the high-level session reset handlers. */
+export interface SessionHandlerDeps extends SessionResetDeps {
+  registeredGroups: Record<string, RegisteredGroup>;
+  sendMessage: (chatJid: string, text: string) => Promise<void>;
 }
 
 export interface ResetResult {
@@ -44,9 +52,7 @@ export function cleanSdkSessionFiles(
     }
     // Delete state_5.sqlite and WAL/SHM files
     const sdkEntries = fs.existsSync(sdkBase) ? fs.readdirSync(sdkBase) : [];
-    for (const f of sdkEntries.filter((n) =>
-      n.startsWith('state_5.sqlite'),
-    )) {
+    for (const f of sdkEntries.filter((n) => n.startsWith('state_5.sqlite'))) {
       try {
         fs.unlinkSync(path.join(sdkBase, f));
       } catch (err) {
@@ -118,13 +124,114 @@ export async function resetGroupSession(
 
   // 4. Clean SDK session files on disk
   const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
-  const sdkBase = path.join(
-    deps.dataDir,
-    'sessions',
-    group.folder,
-    sdkDirName,
-  );
+  const sdkBase = path.join(deps.dataDir, 'sessions', group.folder, sdkDirName);
   const errors = cleanSdkSessionFiles(sdkBase, sdkType);
 
   return { groupName: group.name, folder: group.folder, sdkType, errors };
+}
+
+/**
+ * Match user input to a registered group.
+ * Accepts: short name (agent-meeting-notes), full folder (slack_agent_meeting_notes), or display name (패트).
+ */
+export function findGroupByInput(
+  input: string,
+  registeredGroups: Record<string, RegisteredGroup>,
+): [string, RegisteredGroup] | null {
+  const normalized = input.trim().toLowerCase().replace(/-/g, '_');
+  for (const [jid, group] of Object.entries(registeredGroups)) {
+    if (group.folder.toLowerCase() === normalized) return [jid, group];
+    const unprefixed = group.folder.replace(
+      /^(slack|whatsapp|telegram|discord)_/,
+      '',
+    );
+    if (unprefixed.toLowerCase() === normalized) return [jid, group];
+    if (group.name.toLowerCase() === input.trim().toLowerCase())
+      return [jid, group];
+  }
+  return null;
+}
+
+/**
+ * Reset a single group's session and send the result message.
+ */
+export async function handleSessionReset(
+  chatJid: string,
+  targetInput: string,
+  deps: SessionHandlerDeps,
+): Promise<void> {
+  const match = findGroupByInput(targetInput, deps.registeredGroups);
+  if (!match) {
+    const list = Object.values(deps.registeredGroups)
+      .map((g) => `  ${g.folder}`)
+      .join('\n');
+    await deps.sendMessage(
+      chatJid,
+      `그룹을 찾을 수 없습니다: ${targetInput}\n\n사용 가능:\n${list}`,
+    );
+    return;
+  }
+
+  const [targetJid, group] = match;
+  const result = await resetGroupSession(targetJid, group, deps);
+
+  const status =
+    result.errors.length === 0
+      ? 'OK'
+      : `부분 성공 (${result.errors.join(', ')})`;
+  logger.info(
+    {
+      group: group.name,
+      folder: group.folder,
+      sdk: result.sdkType,
+      errors: result.errors,
+    },
+    'Session reset',
+  );
+  await deps.sendMessage(
+    chatJid,
+    `:arrows_counterclockwise: *세션 초기화 완료*\n그룹: *${group.name}* (${group.folder})\nSDK: ${result.sdkType}\n상태: ${status}`,
+  );
+}
+
+/**
+ * Reset ALL group sessions at once and send the summary message.
+ */
+export async function handleSessionResetAll(
+  chatJid: string,
+  deps: SessionHandlerDeps,
+): Promise<void> {
+  const groups = Object.entries(deps.registeredGroups);
+  if (groups.length === 0) {
+    await deps.sendMessage(chatJid, '등록된 그룹이 없습니다.');
+    return;
+  }
+
+  await deps.sendMessage(
+    chatJid,
+    `:hourglass_flowing_sand: 전체 세션 초기화 시작 (${groups.length}개 그룹)...`,
+  );
+
+  const results: string[] = [];
+  for (const [targetJid, group] of groups) {
+    const result = await resetGroupSession(targetJid, group, deps);
+
+    const status =
+      result.errors.length === 0 ? 'OK' : result.errors.join(', ');
+    results.push(`${group.name} (${result.sdkType}): ${status}`);
+    logger.info(
+      {
+        group: group.name,
+        folder: group.folder,
+        sdk: result.sdkType,
+        errors: result.errors,
+      },
+      'Session reset (all)',
+    );
+  }
+
+  await deps.sendMessage(
+    chatJid,
+    `:arrows_counterclockwise: *전체 세션 초기화 완료* (${groups.length}개)\n${results.map((r) => `• ${r}`).join('\n')}`,
+  );
 }

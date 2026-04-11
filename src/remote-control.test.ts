@@ -13,6 +13,7 @@ vi.mock('child_process', () => ({
 }));
 
 import {
+  handleRemoteControlCommand,
   startRemoteControl,
   stopRemoteControl,
   restoreRemoteControl,
@@ -393,5 +394,30 @@ describe('remote-control', () => {
         },
       );
     });
+  });
+});
+
+// --- handleRemoteControlCommand ---
+
+describe('handleRemoteControlCommand', () => {
+  beforeEach(() => {
+    _resetForTesting();
+  });
+
+  afterEach(() => {
+    _resetForTesting();
+    vi.restoreAllMocks();
+  });
+
+  it('does nothing when not main group', async () => {
+    const sendMessage = vi.fn(async () => {});
+    await handleRemoteControlCommand('/remote-control', 'chat1', '/cwd', {
+      isMainGroup: false,
+      sender: 'user1',
+      sendMessage,
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(spawnMock).not.toHaveBeenCalled();
   });
 });

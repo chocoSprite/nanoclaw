@@ -20,10 +20,12 @@ import {
   getChannelFactory,
   getRegisteredChannelNames,
 } from './channels/registry.js';
-import { getCodexUsageSummary } from './codex-usage.js';
 import { startSessionCleanup } from './session-cleanup.js';
-import { resetGroupSession } from './session-reset.js';
-import type { SessionResetDeps } from './session-reset.js';
+import {
+  handleSessionReset,
+  handleSessionResetAll,
+} from './session-reset.js';
+import type { SessionResetDeps, SessionHandlerDeps } from './session-reset.js';
 import {
   ContainerOutput,
   resolveModel,
@@ -63,9 +65,8 @@ import {
 } from './router.js';
 import { ChannelType } from './text-styles.js';
 import {
+  handleRemoteControlCommand,
   restoreRemoteControl,
-  startRemoteControl,
-  stopRemoteControl,
 } from './remote-control.js';
 import {
   isSenderAllowed,
@@ -78,6 +79,7 @@ import {
   handleSessionCommand,
   isSessionCommandAllowed,
 } from './session-commands.js';
+import { buildLabDashboard } from './lab-dashboard.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -681,68 +683,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // Handle /remote-control and /remote-control-end commands
-  async function handleRemoteControl(
-    command: string,
-    chatJid: string,
-    msg: NewMessage,
-  ): Promise<void> {
-    const group = registeredGroups[chatJid];
-    if (!group?.isMain) {
-      logger.warn(
-        { chatJid, sender: msg.sender },
-        'Remote control rejected: not main group',
-      );
-      return;
-    }
-
-    const channel = findChannel(channels, chatJid);
-    if (!channel) return;
-
-    if (command === '/remote-control') {
-      const result = await startRemoteControl(
-        msg.sender,
-        chatJid,
-        process.cwd(),
-      );
-      if (result.ok) {
-        await channel.sendMessage(chatJid, result.url);
-      } else {
-        await channel.sendMessage(
-          chatJid,
-          `Remote Control failed: ${result.error}`,
-        );
-      }
-    } else {
-      const result = stopRemoteControl();
-      if (result.ok) {
-        await channel.sendMessage(chatJid, 'Remote Control session ended.');
-      } else {
-        await channel.sendMessage(chatJid, result.error);
-      }
-    }
-  }
-
-  // --- Session reset command ---
-
-  /**
-   * Match user input to a registered group.
-   * Accepts: short name (agent-meeting-notes), full folder (slack_agent_meeting_notes), or display name (패트).
-   */
-  function findGroupByInput(input: string): [string, RegisteredGroup] | null {
-    const normalized = input.trim().toLowerCase().replace(/-/g, '_');
-    for (const [jid, group] of Object.entries(registeredGroups)) {
-      if (group.folder.toLowerCase() === normalized) return [jid, group];
-      const unprefixed = group.folder.replace(
-        /^(slack|whatsapp|telegram|discord)_/,
-        '',
-      );
-      if (unprefixed.toLowerCase() === normalized) return [jid, group];
-      if (group.name.toLowerCase() === input.trim().toLowerCase())
-        return [jid, group];
-    }
-    return null;
-  }
+  // --- Session reset deps ---
 
   const resetDeps: SessionResetDeps = {
     dataDir: DATA_DIR,
@@ -751,209 +692,18 @@ async function main(): Promise<void> {
     deleteSession,
   };
 
-  /**
-   * Reset a group's session: terminate container, clear in-memory + DB + SDK files.
-   * Preserves agent memory, auth, config, and skills.
-   */
-  async function handleSessionReset(
-    chatJid: string,
-    targetInput: string,
-  ): Promise<void> {
-    const channel = findChannel(channels, chatJid);
-    if (!channel) return;
-
-    const match = findGroupByInput(targetInput);
-    if (!match) {
-      const list = Object.values(registeredGroups)
-        .map((g) => `  ${g.folder}`)
-        .join('\n');
-      await channel.sendMessage(
-        chatJid,
-        `그룹을 찾을 수 없습니다: ${targetInput}\n\n사용 가능:\n${list}`,
-      );
-      return;
-    }
-
-    const [targetJid, group] = match;
-    const result = await resetGroupSession(targetJid, group, resetDeps);
-
-    const status =
-      result.errors.length === 0
-        ? 'OK'
-        : `부분 성공 (${result.errors.join(', ')})`;
-    logger.info(
-      {
-        group: group.name,
-        folder: group.folder,
-        sdk: result.sdkType,
-        errors: result.errors,
-      },
-      'Session reset',
-    );
-    await channel.sendMessage(
-      chatJid,
-      `:arrows_counterclockwise: *세션 초기화 완료*\n그룹: *${group.name}* (${group.folder})\nSDK: ${result.sdkType}\n상태: ${status}`,
-    );
-  }
-
-  /**
-   * Reset ALL group sessions at once.
-   */
-  async function handleSessionResetAll(chatJid: string): Promise<void> {
-    const channel = findChannel(channels, chatJid);
-    if (!channel) return;
-
-    const groups = Object.entries(registeredGroups);
-    if (groups.length === 0) {
-      await channel.sendMessage(chatJid, '등록된 그룹이 없습니다.');
-      return;
-    }
-
-    await channel.sendMessage(
-      chatJid,
-      `:hourglass_flowing_sand: 전체 세션 초기화 시작 (${groups.length}개 그룹)...`,
-    );
-
-    const results: string[] = [];
-    for (const [targetJid, group] of groups) {
-      const result = await resetGroupSession(targetJid, group, resetDeps);
-
-      const status =
-        result.errors.length === 0 ? 'OK' : result.errors.join(', ');
-      results.push(`${group.name} (${result.sdkType}): ${status}`);
-      logger.info(
-        {
-          group: group.name,
-          folder: group.folder,
-          sdk: result.sdkType,
-          errors: result.errors,
-        },
-        'Session reset (all)',
-      );
-    }
-
-    await channel.sendMessage(
-      chatJid,
-      `:arrows_counterclockwise: *전체 세션 초기화 완료* (${groups.length}개)\n${results.map((r) => `• ${r}`).join('\n')}`,
-    );
-  }
-
   // Handle "랩대시보드" — respond with host-side status snapshot, no container
   async function handleLabDashboard(chatJid: string): Promise<void> {
     const channel = findChannel(channels, chatJid);
     if (!channel) return;
-
-    const now = new Date();
-    const ts = now.toLocaleString('ko-KR', { timeZone: TIMEZONE });
-
-    // Registered groups
-    const groups = Object.entries(registeredGroups);
-    const queueStatuses = queue.getStatuses();
-    const statusMap = new Map(queueStatuses.map((s) => [s.jid, s]));
-
-    const groupLines = groups.map(([jid, g]) => {
-      const qs = statusMap.get(jid);
-      let icon = ':white_circle:';
-      let detail = '유휴';
-      if (qs?.active) {
-        icon = qs.isTask ? ':large_orange_circle:' : ':large_green_circle:';
-        detail = qs.isTask ? `태스크 실행 중` : '에이전트 실행 중';
-        if (qs.idleWaiting) {
-          icon = ':large_blue_circle:';
-          detail = 'idle 대기';
-        }
-      }
-      const pending: string[] = [];
-      if (qs?.pendingMessages) pending.push('메시지 대기');
-      if (qs && qs.pendingTaskCount > 0)
-        pending.push(`태스크 ${qs.pendingTaskCount}개 대기`);
-      const suffix = pending.length > 0 ? ` (${pending.join(', ')})` : '';
-      const mainTag = g.isMain ? ' :star:' : '';
-      const sdkTag = g.sdk === 'claude' ? ' `Claude`' : ' `Codex`';
-      return `${icon} *${g.name}*${mainTag}${sdkTag} — ${detail}${suffix}`;
+    const text = await buildLabDashboard({
+      registeredGroups,
+      queueStatuses: queue.getStatuses(),
+      sessionCount: Object.keys(sessions).length,
+      activeContainerCount: queue.activeContainerCount,
+      timezone: TIMEZONE,
     });
-
-    // Scheduled tasks
-    const tasks = getAllTasks();
-    const active = tasks.filter((t) => t.status === 'active');
-    const paused = tasks.filter((t) => t.status === 'paused');
-    const upcoming = active
-      .filter((t) => t.next_run)
-      .sort((a, b) => a.next_run!.localeCompare(b.next_run!))
-      .slice(0, 5);
-
-    const taskLines = upcoming.map((t) => {
-      const nextRun = t.next_run
-        ? new Date(t.next_run).toLocaleString('ko-KR', { timeZone: TIMEZONE })
-        : '—';
-      const groupName = t.group_folder;
-      let schedLabel = t.schedule_value;
-      if (t.schedule_type === 'cron') {
-        const parts = t.schedule_value.split(' ');
-        if (parts.length >= 5) {
-          const h = parts[1].padStart(2, '0');
-          const m = parts[0].padStart(2, '0');
-          const dayMap: Record<string, string> = {
-            '1-5': '평일',
-            '*': '매일',
-            '0,6': '주말',
-          };
-          const dayPart = dayMap[parts[4]] ?? parts[4];
-          schedLabel = `${dayPart} ${h}:${m}`;
-        }
-      }
-      return `• [${groupName}] ${schedLabel} → ${nextRun}`;
-    });
-
-    // Sessions
-    const sessionCount = Object.keys(sessions).length;
-
-    // Active containers
-    const activeContainers = queue.activeContainerCount;
-
-    // Codex usage (fetch in parallel while building the rest)
-    const usagePromise = getCodexUsageSummary();
-
-    // Build message (Slack mrkdwn)
-    const lines = [
-      `:bar_chart: *랩 대시보드* — ${ts}`,
-      '',
-      `*채널* (${groups.length}개)`,
-      ...groupLines,
-      '',
-      `:gear: *컨테이너* ${activeContainers}개 실행 중 | *세션* ${sessionCount}개`,
-    ];
-
-    // Codex usage section
-    const usage = await usagePromise;
-    if (usage) {
-      const bar = (pct: number) => {
-        const filled = Math.max(0, Math.min(5, Math.round(pct / 20)));
-        return '\u2588'.repeat(filled) + '\u2591'.repeat(5 - filled);
-      };
-      lines.push('');
-      lines.push(':chart_with_upwards_trend: *Codex 사용량*');
-      lines.push(
-        `5h  \`${bar(usage.h5pct)}\` ${usage.h5pct}%${usage.h5reset ? ` (리셋 ${usage.h5reset})` : ''}`,
-      );
-      lines.push(
-        `7d  \`${bar(usage.d7pct)}\` ${usage.d7pct}%${usage.d7reset ? ` (리셋 ${usage.d7reset})` : ''}`,
-      );
-    } else {
-      lines.push('');
-      lines.push(':chart_with_upwards_trend: *Codex 사용량* — 조회 실패');
-    }
-
-    lines.push('');
-    lines.push(
-      `:calendar: *스케줄 작업* — 활성 ${active.length} / 일시정지 ${paused.length} / 전체 ${tasks.length}`,
-    );
-    if (taskLines.length > 0) {
-      lines.push('다음 실행 예정:');
-      lines.push(...taskLines);
-    }
-
-    await channel.sendMessage(chatJid, lines.join('\n'));
+    await channel.sendMessage(chatJid, text);
   }
 
   // Channel callbacks (shared by all channels)
@@ -973,15 +723,22 @@ async function main(): Promise<void> {
         (trimmed.startsWith('세션초기화 ') || trimmed === '세션초기화') &&
         registeredGroups[chatJid]?.isMain
       ) {
+        const ch = findChannel(channels, chatJid);
+        if (!ch) return;
+        const handlerDeps: SessionHandlerDeps = {
+          ...resetDeps,
+          registeredGroups,
+          sendMessage: (jid, text) => ch.sendMessage(jid, text),
+        };
         const targetInput = trimmed.slice('세션초기화'.length).trim();
         if (targetInput === '전체') {
-          handleSessionResetAll(chatJid).catch((err) =>
+          handleSessionResetAll(chatJid, handlerDeps).catch((err) =>
             logger.error({ err, chatJid }, 'Session reset all error'),
           );
           return;
         }
         if (targetInput) {
-          handleSessionReset(chatJid, targetInput).catch((err) =>
+          handleSessionReset(chatJid, targetInput, handlerDeps).catch((err) =>
             logger.error({ err, chatJid }, 'Session reset error'),
           );
           return;
@@ -990,7 +747,18 @@ async function main(): Promise<void> {
 
       // Remote control commands — intercept before storage
       if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
-        handleRemoteControl(trimmed, chatJid, msg).catch((err) =>
+        const ch = findChannel(channels, chatJid);
+        if (!ch) return;
+        handleRemoteControlCommand(
+          trimmed as '/remote-control' | '/remote-control-end',
+          chatJid,
+          process.cwd(),
+          {
+            isMainGroup: registeredGroups[chatJid]?.isMain === true,
+            sender: msg.sender,
+            sendMessage: (text) => ch.sendMessage(chatJid, text),
+          },
+        ).catch((err) =>
           logger.error({ err, chatJid }, 'Remote control command error'),
         );
         return;

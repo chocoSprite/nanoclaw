@@ -4,10 +4,15 @@ import path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   cleanSdkSessionFiles,
+  findGroupByInput,
   resetGroupSession,
 } from './session-reset.js';
 import type { SessionResetDeps } from './session-reset.js';
 import type { RegisteredGroup } from './types.js';
+
+vi.mock('./logger.js', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'session-reset-test-'));
@@ -41,8 +46,12 @@ describe('cleanSdkSessionFiles', () => {
       expect(errors).toEqual([]);
       expect(fs.existsSync(path.join(tmpDir, 'sessions'))).toBe(false);
       expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite'))).toBe(false);
-      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite-wal'))).toBe(false);
-      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite-shm'))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite-wal'))).toBe(
+        false,
+      );
+      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite-shm'))).toBe(
+        false,
+      );
       // Preserved
       expect(fs.existsSync(path.join(tmpDir, 'config.json'))).toBe(true);
     });
@@ -84,12 +93,18 @@ describe('cleanSdkSessionFiles', () => {
       // Deleted
       expect(fs.existsSync(path.join(tmpDir, 'sessions'))).toBe(false);
       expect(fs.existsSync(path.join(tmpDir, 'backups'))).toBe(false);
-      expect(fs.existsSync(path.join(projectDir, 'conversation.jsonl'))).toBe(false);
+      expect(fs.existsSync(path.join(projectDir, 'conversation.jsonl'))).toBe(
+        false,
+      );
       expect(fs.existsSync(subagentsDir)).toBe(false);
       // Preserved
       expect(fs.existsSync(memoryDir)).toBe(true);
-      expect(fs.readFileSync(path.join(memoryDir, 'MEMORY.md'), 'utf8')).toBe('# Memory');
-      expect(fs.readFileSync(path.join(memoryDir, 'user_role.md'), 'utf8')).toBe('role');
+      expect(fs.readFileSync(path.join(memoryDir, 'MEMORY.md'), 'utf8')).toBe(
+        '# Memory',
+      );
+      expect(
+        fs.readFileSync(path.join(memoryDir, 'user_role.md'), 'utf8'),
+      ).toBe('role');
       expect(fs.existsSync(path.join(projectDir, 'other.txt'))).toBe(true);
     });
 
@@ -126,8 +141,12 @@ describe('resetGroupSession', () => {
     const deps: SessionResetDeps = {
       dataDir: '/tmp/nonexistent-data',
       sessions,
-      terminateGroup: vi.fn(async () => { callOrder.push('terminate'); }),
-      deleteSession: vi.fn(() => { callOrder.push('deleteSession'); }),
+      terminateGroup: vi.fn(async () => {
+        callOrder.push('terminate');
+      }),
+      deleteSession: vi.fn(() => {
+        callOrder.push('deleteSession');
+      }),
     };
 
     const group: RegisteredGroup = {
@@ -173,3 +192,49 @@ describe('resetGroupSession', () => {
     expect(result.sdkType).toBe('codex');
   });
 });
+
+// --- findGroupByInput ---
+
+describe('findGroupByInput', () => {
+  const groups: Record<string, RegisteredGroup> = {
+    'slack:C001': {
+      name: '패트',
+      folder: 'slack_pat_main',
+      trigger: '@패트',
+      added_at: '2026-01-01',
+      isMain: true,
+    },
+    'slack:C002': {
+      name: '매트',
+      folder: 'slack_mat_news',
+      trigger: '@매트',
+      added_at: '2026-01-01',
+    },
+  };
+
+  it('matches by full folder name', () => {
+    const result = findGroupByInput('slack_pat_main', groups);
+    expect(result).toEqual(['slack:C001', groups['slack:C001']]);
+  });
+
+  it('matches by unprefixed folder name (case-insensitive)', () => {
+    const result = findGroupByInput('PAT_MAIN', groups);
+    expect(result).toEqual(['slack:C001', groups['slack:C001']]);
+  });
+
+  it('matches by display name', () => {
+    const result = findGroupByInput('매트', groups);
+    expect(result).toEqual(['slack:C002', groups['slack:C002']]);
+  });
+
+  it('matches hyphenated input to underscored folder', () => {
+    const result = findGroupByInput('mat-news', groups);
+    expect(result).toEqual(['slack:C002', groups['slack:C002']]);
+  });
+
+  it('returns null for non-existent group', () => {
+    const result = findGroupByInput('nonexistent', groups);
+    expect(result).toBeNull();
+  });
+});
+

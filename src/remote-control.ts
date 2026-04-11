@@ -202,6 +202,45 @@ export async function startRemoteControl(
   });
 }
 
+/**
+ * High-level handler for /remote-control and /remote-control-end commands.
+ * Checks isMain, dispatches to start/stop, and sends the result message.
+ */
+export async function handleRemoteControlCommand(
+  command: '/remote-control' | '/remote-control-end',
+  chatJid: string,
+  cwd: string,
+  deps: {
+    isMainGroup: boolean;
+    sender: string;
+    sendMessage: (text: string) => Promise<void>;
+  },
+): Promise<void> {
+  if (!deps.isMainGroup) {
+    logger.warn(
+      { chatJid, sender: deps.sender },
+      'Remote control rejected: not main group',
+    );
+    return;
+  }
+
+  if (command === '/remote-control') {
+    const result = await startRemoteControl(deps.sender, chatJid, cwd);
+    if (result.ok) {
+      await deps.sendMessage(result.url);
+    } else {
+      await deps.sendMessage(`Remote Control failed: ${result.error}`);
+    }
+  } else {
+    const result = stopRemoteControl();
+    if (result.ok) {
+      await deps.sendMessage('Remote Control session ended.');
+    } else {
+      await deps.sendMessage(result.error);
+    }
+  }
+}
+
 export function stopRemoteControl():
   | {
       ok: true;
