@@ -182,15 +182,15 @@ describe('database migrations', () => {
       const schedCols = db
         .prepare(`PRAGMA table_info(scheduled_tasks)`)
         .all() as Array<{ name: string }>;
-      const msgCols = db
-        .prepare(`PRAGMA table_info(messages)`)
-        .all() as Array<{ name: string }>;
+      const msgCols = db.prepare(`PRAGMA table_info(messages)`).all() as Array<{
+        name: string;
+      }>;
       const regCols = db
         .prepare(`PRAGMA table_info(registered_groups)`)
         .all() as Array<{ name: string }>;
-      const chatCols = db
-        .prepare(`PRAGMA table_info(chats)`)
-        .all() as Array<{ name: string }>;
+      const chatCols = db.prepare(`PRAGMA table_info(chats)`).all() as Array<{
+        name: string;
+      }>;
       db.close();
 
       expect(version).toBe(SCHEMA_VERSION);

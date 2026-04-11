@@ -108,64 +108,99 @@ const migrations: Migration[] = [
   // 1: scheduled_tasks.context_mode
   (db) => {
     try {
-      db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`);
-    } catch { /* already exists */ }
+      db.exec(
+        `ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`,
+      );
+    } catch {
+      /* already exists */
+    }
   },
   // 2: scheduled_tasks.script
   (db) => {
     try {
       db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN script TEXT`);
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   },
   // 3: messages.is_bot_message + backfill
   (db) => {
     try {
-      db.exec(`ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`);
-      db.prepare(`UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`)
-        .run(`${ASSISTANT_NAME}:%`);
-    } catch { /* already exists */ }
+      db.exec(
+        `ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`,
+      );
+      db.prepare(
+        `UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`,
+      ).run(`${ASSISTANT_NAME}:%`);
+    } catch {
+      /* already exists */
+    }
   },
   // 4: registered_groups.is_main + backfill
   (db) => {
     try {
-      db.exec(`ALTER TABLE registered_groups ADD COLUMN is_main INTEGER DEFAULT 0`);
+      db.exec(
+        `ALTER TABLE registered_groups ADD COLUMN is_main INTEGER DEFAULT 0`,
+      );
       db.exec(`UPDATE registered_groups SET is_main = 1 WHERE folder = 'main'`);
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   },
   // 5: registered_groups.review_config
   (db) => {
     try {
       db.exec(`ALTER TABLE registered_groups ADD COLUMN review_config TEXT`);
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   },
   // 6: registered_groups.sdk
   (db) => {
     try {
-      db.exec(`ALTER TABLE registered_groups ADD COLUMN sdk TEXT DEFAULT 'codex'`);
-    } catch { /* already exists */ }
+      db.exec(
+        `ALTER TABLE registered_groups ADD COLUMN sdk TEXT DEFAULT 'codex'`,
+      );
+    } catch {
+      /* already exists */
+    }
   },
   // 7: registered_groups.model
   (db) => {
     try {
       db.exec(`ALTER TABLE registered_groups ADD COLUMN model TEXT`);
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   },
   // 8: messages.thread_id
   (db) => {
     try {
       db.exec(`ALTER TABLE messages ADD COLUMN thread_id TEXT`);
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   },
   // 9: chats.channel + chats.is_group + backfill
   (db) => {
     try {
       db.exec(`ALTER TABLE chats ADD COLUMN channel TEXT`);
       db.exec(`ALTER TABLE chats ADD COLUMN is_group INTEGER DEFAULT 0`);
-      db.exec(`UPDATE chats SET channel = 'whatsapp', is_group = 1 WHERE jid LIKE '%@g.us'`);
-      db.exec(`UPDATE chats SET channel = 'whatsapp', is_group = 0 WHERE jid LIKE '%@s.whatsapp.net'`);
-      db.exec(`UPDATE chats SET channel = 'discord', is_group = 1 WHERE jid LIKE 'dc:%'`);
-      db.exec(`UPDATE chats SET channel = 'telegram', is_group = 0 WHERE jid LIKE 'tg:%'`);
-    } catch { /* already exists */ }
+      db.exec(
+        `UPDATE chats SET channel = 'whatsapp', is_group = 1 WHERE jid LIKE '%@g.us'`,
+      );
+      db.exec(
+        `UPDATE chats SET channel = 'whatsapp', is_group = 0 WHERE jid LIKE '%@s.whatsapp.net'`,
+      );
+      db.exec(
+        `UPDATE chats SET channel = 'discord', is_group = 1 WHERE jid LIKE 'dc:%'`,
+      );
+      db.exec(
+        `UPDATE chats SET channel = 'telegram', is_group = 0 WHERE jid LIKE 'tg:%'`,
+      );
+    } catch {
+      /* already exists */
+    }
   },
   // 10: remove __group_sync__ sentinel from chats
   (db) => {
