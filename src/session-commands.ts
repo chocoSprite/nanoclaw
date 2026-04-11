@@ -1,5 +1,6 @@
 import type { NewMessage } from './types.js';
 import { logger } from './logger.js';
+import { stripInternalTags } from './router.js';
 
 /**
  * Extract a session slash command from a message, stripping the trigger prefix if present.
@@ -52,7 +53,7 @@ export interface SessionCommandDeps {
 function resultToText(result: string | object | null | undefined): string {
   if (!result) return '';
   const raw = typeof result === 'string' ? result : JSON.stringify(result);
-  return raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+  return stripInternalTags(raw);
 }
 
 /**

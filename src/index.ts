@@ -26,6 +26,7 @@ import { resetGroupSession } from './session-reset.js';
 import type { SessionResetDeps } from './session-reset.js';
 import {
   ContainerOutput,
+  resolveModel,
   runContainerAgent,
   writeGroupsSnapshot,
   writeTasksSnapshot,
@@ -54,7 +55,12 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
-import { findChannel, formatMessages, formatOutbound } from './router.js';
+import {
+  findChannel,
+  formatMessages,
+  formatOutbound,
+  stripInternalTags,
+} from './router.js';
 import { ChannelType } from './text-styles.js';
 import {
   restoreRemoteControl,
@@ -386,8 +392,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         typeof result.result === 'string'
           ? result.result
           : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+      const text = stripInternalTags(raw);
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
         const threadTs = pendingThreadTs[chatJid];
@@ -494,12 +499,7 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
         sdk: group.sdk ?? 'codex',
-        model:
-          group.sdk === 'claude' &&
-          group.model?.startsWith('claude-') &&
-          !group.model.includes('[')
-            ? `${group.model}[1m]`
-            : group.model,
+        model: resolveModel(group.sdk, group.model),
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),

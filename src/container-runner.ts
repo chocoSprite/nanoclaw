@@ -35,6 +35,23 @@ const onecli = new OneCLI({ url: ONECLI_URL });
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
+/**
+ * Append [1m] context suffix to Claude model strings that don't already have it.
+ */
+export function resolveModel(
+  sdk: 'codex' | 'claude' | undefined,
+  model: string | undefined,
+): string | undefined {
+  if (
+    sdk === 'claude' &&
+    model?.startsWith('claude-') &&
+    !model.includes('[')
+  ) {
+    return `${model}[1m]`;
+  }
+  return model;
+}
+
 export interface ContainerInput {
   prompt: string;
   sessionId?: string;
