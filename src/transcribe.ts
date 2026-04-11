@@ -10,7 +10,12 @@ import path from 'path';
 import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
 
-const WHISPER_BIN = '/opt/homebrew/bin/whisper-cli';
+const WHISPER_BIN =
+  process.env.WHISPER_BIN ||
+  ['/opt/homebrew/bin/whisper-cli', '/usr/local/bin/whisper-cli'].find((p) =>
+    fs.existsSync(p),
+  ) ||
+  'whisper-cli';
 const MODEL_PATH = path.join(DATA_DIR, 'models', 'ggml-large-v3-turbo.bin');
 const TRANSCRIBE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
