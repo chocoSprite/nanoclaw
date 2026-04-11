@@ -22,6 +22,8 @@ import {
 } from './channels/registry.js';
 import { getCodexUsageSummary } from './codex-usage.js';
 import { startSessionCleanup } from './session-cleanup.js';
+import { resetGroupSession } from './session-reset.js';
+import type { SessionResetDeps } from './session-reset.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -742,6 +744,13 @@ async function main(): Promise<void> {
     return null;
   }
 
+  const resetDeps: SessionResetDeps = {
+    dataDir: DATA_DIR,
+    sessions,
+    terminateGroup: (jid) => queue.terminateGroup(jid),
+    deleteSession,
+  };
+
   /**
    * Reset a group's session: terminate container, clear in-memory + DB + SDK files.
    * Preserves agent memory, auth, config, and skills.
@@ -766,92 +775,24 @@ async function main(): Promise<void> {
     }
 
     const [targetJid, group] = match;
-    const sdkType = group.sdk ?? 'codex';
-    const errors: string[] = [];
-
-    // 1. Terminate running container
-    await queue.terminateGroup(targetJid);
-
-    // 2. Clear in-memory session
-    delete sessions[group.folder];
-
-    // 3. Clear DB session record
-    deleteSession(group.folder);
-
-    // 4. Clean SDK session files on disk
-    const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
-    const sdkBase = path.join(DATA_DIR, 'sessions', group.folder, sdkDirName);
-
-    if (sdkType === 'codex') {
-      // Codex: delete sessions/ dir + state_5.sqlite*
-      for (const target of ['sessions']) {
-        const p = path.join(sdkBase, target);
-        try {
-          if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
-        } catch (err) {
-          errors.push(`${target}: ${err}`);
-        }
-      }
-      // Delete state_5.sqlite and WAL/SHM files
-      const sdkEntries = fs.existsSync(sdkBase) ? fs.readdirSync(sdkBase) : [];
-      for (const f of sdkEntries.filter((n) =>
-        n.startsWith('state_5.sqlite'),
-      )) {
-        try {
-          fs.unlinkSync(path.join(sdkBase, f));
-        } catch (err) {
-          errors.push(`${f}: ${err}`);
-        }
-      }
-    } else {
-      // Claude: delete sessions/, backups/, and project session files (preserve memory/)
-      for (const dir of ['sessions', 'backups']) {
-        const p = path.join(sdkBase, dir);
-        try {
-          if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
-        } catch (err) {
-          errors.push(`${dir}: ${err}`);
-        }
-      }
-      // Clean projects: delete *.jsonl and subagents/ but preserve memory/
-      const projectsDir = path.join(sdkBase, 'projects');
-      if (fs.existsSync(projectsDir)) {
-        const walk = (dir: string): void => {
-          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-            const full = path.join(dir, entry.name);
-            if (entry.name === 'memory') continue; // preserve
-            if (entry.isDirectory()) {
-              if (entry.name === 'subagents') {
-                try {
-                  fs.rmSync(full, { recursive: true });
-                } catch (err) {
-                  errors.push(`subagents: ${err}`);
-                }
-              } else {
-                walk(full);
-              }
-            } else if (entry.name.endsWith('.jsonl')) {
-              try {
-                fs.unlinkSync(full);
-              } catch (err) {
-                errors.push(`${entry.name}: ${err}`);
-              }
-            }
-          }
-        };
-        walk(projectsDir);
-      }
-    }
+    const result = await resetGroupSession(targetJid, group, resetDeps);
 
     const status =
-      errors.length === 0 ? 'OK' : `부분 성공 (${errors.join(', ')})`;
+      result.errors.length === 0
+        ? 'OK'
+        : `부분 성공 (${result.errors.join(', ')})`;
     logger.info(
-      { group: group.name, folder: group.folder, sdk: sdkType, errors },
+      {
+        group: group.name,
+        folder: group.folder,
+        sdk: result.sdkType,
+        errors: result.errors,
+      },
       'Session reset',
     );
     await channel.sendMessage(
       chatJid,
-      `:arrows_counterclockwise: *세션 초기화 완료*\n그룹: *${group.name}* (${group.folder})\nSDK: ${sdkType}\n상태: ${status}`,
+      `:arrows_counterclockwise: *세션 초기화 완료*\n그룹: *${group.name}* (${group.folder})\nSDK: ${result.sdkType}\n상태: ${status}`,
     );
   }
 
@@ -875,90 +816,18 @@ async function main(): Promise<void> {
 
     const results: string[] = [];
     for (const [targetJid, group] of groups) {
-      const sdkType = group.sdk ?? 'codex';
-      const errors: string[] = [];
+      const result = await resetGroupSession(targetJid, group, resetDeps);
 
-      // 1. Terminate running container
-      await queue.terminateGroup(targetJid);
-
-      // 2. Clear in-memory session
-      delete sessions[group.folder];
-
-      // 3. Clear DB session record
-      deleteSession(group.folder);
-
-      // 4. Clean SDK session files on disk
-      const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
-      const sdkBase = path.join(
-        DATA_DIR,
-        'sessions',
-        group.folder,
-        sdkDirName,
-      );
-
-      if (sdkType === 'codex') {
-        for (const target of ['sessions']) {
-          const p = path.join(sdkBase, target);
-          try {
-            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
-          } catch (err) {
-            errors.push(`${target}: ${err}`);
-          }
-        }
-        const sdkEntries = fs.existsSync(sdkBase)
-          ? fs.readdirSync(sdkBase)
-          : [];
-        for (const f of sdkEntries.filter((n) =>
-          n.startsWith('state_5.sqlite'),
-        )) {
-          try {
-            fs.unlinkSync(path.join(sdkBase, f));
-          } catch (err) {
-            errors.push(`${f}: ${err}`);
-          }
-        }
-      } else {
-        for (const dir of ['sessions', 'backups']) {
-          const p = path.join(sdkBase, dir);
-          try {
-            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
-          } catch (err) {
-            errors.push(`${dir}: ${err}`);
-          }
-        }
-        const projectsDir = path.join(sdkBase, 'projects');
-        if (fs.existsSync(projectsDir)) {
-          const walk = (dir: string): void => {
-            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-              const full = path.join(dir, entry.name);
-              if (entry.name === 'memory') continue;
-              if (entry.isDirectory()) {
-                if (entry.name === 'subagents') {
-                  try {
-                    fs.rmSync(full, { recursive: true });
-                  } catch (err) {
-                    errors.push(`subagents: ${err}`);
-                  }
-                } else {
-                  walk(full);
-                }
-              } else if (entry.name.endsWith('.jsonl')) {
-                try {
-                  fs.unlinkSync(full);
-                } catch (err) {
-                  errors.push(`${entry.name}: ${err}`);
-                }
-              }
-            }
-          };
-          walk(projectsDir);
-        }
-      }
-
-      const status = errors.length === 0 ? 'OK' : errors.join(', ');
-      results.push(`${group.name} (${sdkType}): ${status}`);
+      const status =
+        result.errors.length === 0 ? 'OK' : result.errors.join(', ');
+      results.push(`${group.name} (${result.sdkType}): ${status}`);
       logger.info(
-        { group: group.name, folder: group.folder, sdk: sdkType, errors },
+        {
+          group: group.name,
+          folder: group.folder,
+          sdk: result.sdkType,
+          errors: result.errors,
+        },
         'Session reset (all)',
       );
     }

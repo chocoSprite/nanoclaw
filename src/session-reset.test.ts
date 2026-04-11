@@ -1,0 +1,175 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  cleanSdkSessionFiles,
+  resetGroupSession,
+} from './session-reset.js';
+import type { SessionResetDeps } from './session-reset.js';
+import type { RegisteredGroup } from './types.js';
+
+function makeTmpDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'session-reset-test-'));
+}
+
+describe('cleanSdkSessionFiles', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  describe('codex', () => {
+    it('deletes sessions/ dir and state_5.sqlite* files', () => {
+      // Setup: sessions dir with content
+      fs.mkdirSync(path.join(tmpDir, 'sessions'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'sessions', 'abc.json'), '{}');
+      // Setup: state_5.sqlite + WAL/SHM
+      fs.writeFileSync(path.join(tmpDir, 'state_5.sqlite'), 'data');
+      fs.writeFileSync(path.join(tmpDir, 'state_5.sqlite-wal'), 'wal');
+      fs.writeFileSync(path.join(tmpDir, 'state_5.sqlite-shm'), 'shm');
+      // Setup: other files that should be preserved
+      fs.writeFileSync(path.join(tmpDir, 'config.json'), '{}');
+
+      const errors = cleanSdkSessionFiles(tmpDir, 'codex');
+
+      expect(errors).toEqual([]);
+      expect(fs.existsSync(path.join(tmpDir, 'sessions'))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite'))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite-wal'))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'state_5.sqlite-shm'))).toBe(false);
+      // Preserved
+      expect(fs.existsSync(path.join(tmpDir, 'config.json'))).toBe(true);
+    });
+
+    it('returns empty errors when sdkBase does not exist', () => {
+      const errors = cleanSdkSessionFiles('/nonexistent/path', 'codex');
+      expect(errors).toEqual([]);
+    });
+  });
+
+  describe('claude', () => {
+    it('deletes sessions/, backups/, .jsonl, subagents/ but preserves memory/', () => {
+      // Setup: sessions and backups dirs
+      fs.mkdirSync(path.join(tmpDir, 'sessions'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'sessions', 'sess.json'), '{}');
+      fs.mkdirSync(path.join(tmpDir, 'backups'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'backups', 'backup.json'), '{}');
+
+      // Setup: projects tree with .jsonl, subagents, and memory
+      const projectDir = path.join(tmpDir, 'projects', 'proj1');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(path.join(projectDir, 'conversation.jsonl'), 'data');
+      fs.writeFileSync(path.join(projectDir, 'other.txt'), 'keep');
+
+      // subagents dir
+      const subagentsDir = path.join(projectDir, 'subagents');
+      fs.mkdirSync(subagentsDir, { recursive: true });
+      fs.writeFileSync(path.join(subagentsDir, 'agent.json'), '{}');
+
+      // memory dir (MUST be preserved)
+      const memoryDir = path.join(projectDir, 'memory');
+      fs.mkdirSync(memoryDir, { recursive: true });
+      fs.writeFileSync(path.join(memoryDir, 'MEMORY.md'), '# Memory');
+      fs.writeFileSync(path.join(memoryDir, 'user_role.md'), 'role');
+
+      const errors = cleanSdkSessionFiles(tmpDir, 'claude');
+
+      expect(errors).toEqual([]);
+      // Deleted
+      expect(fs.existsSync(path.join(tmpDir, 'sessions'))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, 'backups'))).toBe(false);
+      expect(fs.existsSync(path.join(projectDir, 'conversation.jsonl'))).toBe(false);
+      expect(fs.existsSync(subagentsDir)).toBe(false);
+      // Preserved
+      expect(fs.existsSync(memoryDir)).toBe(true);
+      expect(fs.readFileSync(path.join(memoryDir, 'MEMORY.md'), 'utf8')).toBe('# Memory');
+      expect(fs.readFileSync(path.join(memoryDir, 'user_role.md'), 'utf8')).toBe('role');
+      expect(fs.existsSync(path.join(projectDir, 'other.txt'))).toBe(true);
+    });
+
+    it('returns empty errors when sdkBase does not exist', () => {
+      const errors = cleanSdkSessionFiles('/nonexistent/path', 'claude');
+      expect(errors).toEqual([]);
+    });
+
+    it('preserves memory/ in nested project directories', () => {
+      // Setup: nested projects with memory at different levels
+      const proj = path.join(tmpDir, 'projects', 'a', 'b');
+      fs.mkdirSync(proj, { recursive: true });
+      fs.writeFileSync(path.join(proj, 'data.jsonl'), 'x');
+
+      const mem = path.join(proj, 'memory');
+      fs.mkdirSync(mem, { recursive: true });
+      fs.writeFileSync(path.join(mem, 'note.md'), 'note');
+
+      const errors = cleanSdkSessionFiles(tmpDir, 'claude');
+
+      expect(errors).toEqual([]);
+      expect(fs.existsSync(path.join(proj, 'data.jsonl'))).toBe(false);
+      expect(fs.existsSync(mem)).toBe(true);
+      expect(fs.readFileSync(path.join(mem, 'note.md'), 'utf8')).toBe('note');
+    });
+  });
+});
+
+describe('resetGroupSession', () => {
+  it('calls all 4 reset steps in order and returns result', async () => {
+    const callOrder: string[] = [];
+    const sessions: Record<string, string> = { 'test-folder': 'session-123' };
+
+    const deps: SessionResetDeps = {
+      dataDir: '/tmp/nonexistent-data',
+      sessions,
+      terminateGroup: vi.fn(async () => { callOrder.push('terminate'); }),
+      deleteSession: vi.fn(() => { callOrder.push('deleteSession'); }),
+    };
+
+    const group: RegisteredGroup = {
+      name: 'Test Group',
+      folder: 'test-folder',
+      trigger: '@test',
+      added_at: '2026-01-01',
+      sdk: 'codex',
+    };
+
+    const result = await resetGroupSession('jid123', group, deps);
+
+    expect(callOrder).toEqual(['terminate', 'deleteSession']);
+    expect(deps.terminateGroup).toHaveBeenCalledWith('jid123');
+    expect(deps.deleteSession).toHaveBeenCalledWith('test-folder');
+    expect(sessions['test-folder']).toBeUndefined();
+    expect(result).toEqual({
+      groupName: 'Test Group',
+      folder: 'test-folder',
+      sdkType: 'codex',
+      errors: [],
+    });
+  });
+
+  it('defaults sdk to codex when undefined', async () => {
+    const deps: SessionResetDeps = {
+      dataDir: '/tmp/nonexistent-data',
+      sessions: {},
+      terminateGroup: vi.fn(async () => {}),
+      deleteSession: vi.fn(),
+    };
+
+    const group: RegisteredGroup = {
+      name: 'No SDK',
+      folder: 'no-sdk',
+      trigger: '@bot',
+      added_at: '2026-01-01',
+      // sdk is undefined
+    };
+
+    const result = await resetGroupSession('jid', group, deps);
+
+    expect(result.sdkType).toBe('codex');
+  });
+});
