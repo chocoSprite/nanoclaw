@@ -27,7 +27,7 @@ import {
 } from './container-runtime.js';
 import { OneCLI } from '@onecli-sh/sdk';
 import { validateAdditionalMounts } from './mount-security.js';
-import { RegisteredGroup } from './types.js';
+import { RegisteredGroup, ScheduledTask } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL });
 
@@ -880,6 +880,33 @@ export async function runContainerAgent(
       });
     });
   });
+}
+
+/** Map DB tasks to the snapshot format consumed by containers. */
+export function mapTasksToSnapshots(
+  tasks: ScheduledTask[],
+): Array<Parameters<typeof writeTasksSnapshot>[2][number]> {
+  return tasks.map((t) => ({
+    id: t.id,
+    groupFolder: t.group_folder,
+    prompt: t.prompt,
+    script: t.script ?? undefined,
+    schedule_type: t.schedule_type,
+    schedule_value: t.schedule_value,
+    status: t.status,
+    next_run: t.next_run,
+  }));
+}
+
+/** Write tasks snapshot to all registered groups at once. */
+export function writeAllTasksSnapshots(
+  groups: Record<string, RegisteredGroup>,
+  tasks: ScheduledTask[],
+): void {
+  const rows = mapTasksToSnapshots(tasks);
+  for (const group of Object.values(groups)) {
+    writeTasksSnapshot(group.folder, group.isMain === true, rows);
+  }
 }
 
 export function writeTasksSnapshot(

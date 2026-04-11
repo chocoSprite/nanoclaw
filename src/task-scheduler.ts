@@ -4,6 +4,7 @@ import fs from 'fs';
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL } from './config.js';
 import {
   ContainerOutput,
+  mapTasksToSnapshots,
   runContainerAgent,
   writeTasksSnapshot,
   resolveModel,
@@ -93,20 +94,10 @@ async function runTask(
 
   // Update tasks snapshot for container to read (filtered by group)
   const isMain = group.isMain === true;
-  const tasks = getAllTasks();
   writeTasksSnapshot(
     task.group_folder,
     isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      script: t.script,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    })),
+    mapTasksToSnapshots(getAllTasks()),
   );
 
   let result: string | null = null;

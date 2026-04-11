@@ -27,8 +27,8 @@ import {
   ContainerOutput,
   resolveModel,
   runContainerAgent,
+  writeAllTasksSnapshots,
   writeGroupsSnapshot,
-  writeTasksSnapshot,
 } from './container-runner.js';
 import {
   cleanupOrphans,
@@ -847,41 +847,17 @@ async function main(): Promise<void> {
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
     onTasksChanged: () => {
-      const tasks = getAllTasks();
-      const taskRows = tasks.map((t) => ({
-        id: t.id,
-        groupFolder: t.group_folder,
-        prompt: t.prompt,
-        script: t.script || undefined,
-        schedule_type: t.schedule_type,
-        schedule_value: t.schedule_value,
-        status: t.status,
-        next_run: t.next_run,
-      }));
-      for (const group of Object.values(registeredGroups)) {
-        writeTasksSnapshot(group.folder, group.isMain === true, taskRows);
-      }
+      writeAllTasksSnapshots(registeredGroups, getAllTasks());
     },
   });
   queue.setProcessMessagesFn(processGroupMessages);
 
   // Write initial snapshots so containers can read tasks/groups from startup
+  writeAllTasksSnapshots(registeredGroups, getAllTasks());
   {
-    const initTasks = getAllTasks();
-    const initTaskRows = initTasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      script: t.script || undefined,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    }));
     const initAvailableGroups = getAvailableGroups();
     const initRegisteredJids = new Set(Object.keys(registeredGroups));
     for (const group of Object.values(registeredGroups)) {
-      writeTasksSnapshot(group.folder, group.isMain === true, initTaskRows);
       writeGroupsSnapshot(
         group.folder,
         group.isMain === true,
