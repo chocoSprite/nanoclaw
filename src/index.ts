@@ -90,6 +90,9 @@ const queue = new GroupQueue();
 // Resets when a human message arrives.
 const MAX_BOT_ROUNDS = 3;
 const botConversationCount: Record<string, number> = {};
+// Track the thread_ts of the most recent triggering message per chat.
+// When the agent responds, it replies in the same thread.
+const pendingThreadTs: Record<string, string> = {};
 
 function getPhysicalChannel(jid: string): string {
   return jid.replace(/^[^:]+:/, '');
@@ -385,7 +388,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
+        const threadTs = pendingThreadTs[chatJid];
+        await channel.sendMessage(
+          chatJid,
+          text,
+          threadTs ? { threadTs } : undefined,
+        );
         outputSentToUser = true;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
@@ -1029,6 +1037,9 @@ async function main(): Promise<void> {
           msg.reply_to_sender_name = parent.sender_name;
           msg.reply_to_content = parent.content.slice(0, 300);
         }
+        pendingThreadTs[msg.chat_jid] = msg.thread_id;
+      } else {
+        delete pendingThreadTs[msg.chat_jid];
       }
     },
     onChatMetadata: (

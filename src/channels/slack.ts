@@ -87,7 +87,11 @@ export class SlackChannel implements Channel {
   private app: App;
   private botUserId: string | undefined;
   private connected = false;
-  private outgoingQueue: Array<{ jid: string; text: string }> = [];
+  private outgoingQueue: Array<{
+    jid: string;
+    text: string;
+    threadTs?: string;
+  }> = [];
   private flushing = false;
   private userNameCache = new Map<string, string>();
 
@@ -274,9 +278,7 @@ export class SlackChannel implements Channel {
       }
 
       // Detect thread replies: thread_ts present and different from ts
-      const isThreadReply = !!(
-        msg.thread_ts && msg.ts !== msg.thread_ts
-      );
+      const isThreadReply = !!(msg.thread_ts && msg.ts !== msg.thread_ts);
 
       this.opts.onMessage(jid, {
         id: msg.ts,
@@ -320,11 +322,15 @@ export class SlackChannel implements Channel {
     await this.syncChannelMetadata();
   }
 
-  async sendMessage(jid: string, text: string): Promise<void> {
+  async sendMessage(
+    jid: string,
+    text: string,
+    opts?: { threadTs?: string },
+  ): Promise<void> {
     const channelId = jid.replace(new RegExp(`^${this.jidPrefix}:`), '');
 
     if (!this.connected) {
-      this.outgoingQueue.push({ jid, text });
+      this.outgoingQueue.push({ jid, text, threadTs: opts?.threadTs });
       logger.info(
         { jid, queueSize: this.outgoingQueue.length },
         'Slack disconnected, message queued',
@@ -346,6 +352,7 @@ export class SlackChannel implements Channel {
           await this.app.client.chat.postMessage({
             channel: channelId,
             text: messageText,
+            thread_ts: opts?.threadTs,
             unfurl_links: false,
             unfurl_media: false,
           });
@@ -354,6 +361,7 @@ export class SlackChannel implements Channel {
             await this.app.client.chat.postMessage({
               channel: channelId,
               text: messageText.slice(i, i + MAX_MESSAGE_LENGTH),
+              thread_ts: opts?.threadTs,
               unfurl_links: false,
               unfurl_media: false,
             });
@@ -368,7 +376,8 @@ export class SlackChannel implements Channel {
             channel_id: channelId,
             file: fs.createReadStream(filePath),
             filename: path.basename(filePath),
-          });
+            ...(opts?.threadTs ? { thread_ts: opts.threadTs } : {}),
+          } as Parameters<typeof this.app.client.filesUploadV2>[0]);
           logger.info({ jid, path: filePath }, 'Slack file uploaded');
         } catch (err) {
           logger.warn({ jid, path: filePath, err }, 'Failed to upload file');
@@ -384,7 +393,7 @@ export class SlackChannel implements Channel {
         'Slack message sent',
       );
     } catch (err) {
-      this.outgoingQueue.push({ jid, text });
+      this.outgoingQueue.push({ jid, text, threadTs: opts?.threadTs });
       logger.warn(
         { jid, err, queueSize: this.outgoingQueue.length },
         'Failed to send Slack message, queued',
@@ -752,6 +761,7 @@ export class SlackChannel implements Channel {
         await this.app.client.chat.postMessage({
           channel: channelId,
           text: item.text,
+          thread_ts: item.threadTs,
         });
         logger.info(
           { jid: item.jid, length: item.text.length },
