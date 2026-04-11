@@ -349,10 +349,7 @@ export function storeMessageDirect(msg: {
   );
 }
 
-export function getMessageById(
-  id: string,
-  chatJid: string,
-): NewMessage | null {
+export function getMessageById(id: string, chatJid: string): NewMessage | null {
   return (
     (db
       .prepare(

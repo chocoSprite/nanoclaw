@@ -855,6 +855,120 @@ async function main(): Promise<void> {
     );
   }
 
+  /**
+   * Reset ALL group sessions at once.
+   */
+  async function handleSessionResetAll(chatJid: string): Promise<void> {
+    const channel = findChannel(channels, chatJid);
+    if (!channel) return;
+
+    const groups = Object.entries(registeredGroups);
+    if (groups.length === 0) {
+      await channel.sendMessage(chatJid, '등록된 그룹이 없습니다.');
+      return;
+    }
+
+    await channel.sendMessage(
+      chatJid,
+      `:hourglass_flowing_sand: 전체 세션 초기화 시작 (${groups.length}개 그룹)...`,
+    );
+
+    const results: string[] = [];
+    for (const [targetJid, group] of groups) {
+      const sdkType = group.sdk ?? 'codex';
+      const errors: string[] = [];
+
+      // 1. Terminate running container
+      await queue.terminateGroup(targetJid);
+
+      // 2. Clear in-memory session
+      delete sessions[group.folder];
+
+      // 3. Clear DB session record
+      deleteSession(group.folder);
+
+      // 4. Clean SDK session files on disk
+      const sdkDirName = sdkType === 'claude' ? '.claude' : '.codex';
+      const sdkBase = path.join(
+        DATA_DIR,
+        'sessions',
+        group.folder,
+        sdkDirName,
+      );
+
+      if (sdkType === 'codex') {
+        for (const target of ['sessions']) {
+          const p = path.join(sdkBase, target);
+          try {
+            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
+          } catch (err) {
+            errors.push(`${target}: ${err}`);
+          }
+        }
+        const sdkEntries = fs.existsSync(sdkBase)
+          ? fs.readdirSync(sdkBase)
+          : [];
+        for (const f of sdkEntries.filter((n) =>
+          n.startsWith('state_5.sqlite'),
+        )) {
+          try {
+            fs.unlinkSync(path.join(sdkBase, f));
+          } catch (err) {
+            errors.push(`${f}: ${err}`);
+          }
+        }
+      } else {
+        for (const dir of ['sessions', 'backups']) {
+          const p = path.join(sdkBase, dir);
+          try {
+            if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
+          } catch (err) {
+            errors.push(`${dir}: ${err}`);
+          }
+        }
+        const projectsDir = path.join(sdkBase, 'projects');
+        if (fs.existsSync(projectsDir)) {
+          const walk = (dir: string): void => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const full = path.join(dir, entry.name);
+              if (entry.name === 'memory') continue;
+              if (entry.isDirectory()) {
+                if (entry.name === 'subagents') {
+                  try {
+                    fs.rmSync(full, { recursive: true });
+                  } catch (err) {
+                    errors.push(`subagents: ${err}`);
+                  }
+                } else {
+                  walk(full);
+                }
+              } else if (entry.name.endsWith('.jsonl')) {
+                try {
+                  fs.unlinkSync(full);
+                } catch (err) {
+                  errors.push(`${entry.name}: ${err}`);
+                }
+              }
+            }
+          };
+          walk(projectsDir);
+        }
+      }
+
+      const status = errors.length === 0 ? 'OK' : errors.join(', ');
+      results.push(`${group.name} (${sdkType}): ${status}`);
+      logger.info(
+        { group: group.name, folder: group.folder, sdk: sdkType, errors },
+        'Session reset (all)',
+      );
+    }
+
+    await channel.sendMessage(
+      chatJid,
+      `:arrows_counterclockwise: *전체 세션 초기화 완료* (${groups.length}개)\n${results.map((r) => `• ${r}`).join('\n')}`,
+    );
+  }
+
   // Handle "랩대시보드" — respond with host-side status snapshot, no container
   async function handleLabDashboard(chatJid: string): Promise<void> {
     const channel = findChannel(channels, chatJid);
@@ -987,10 +1101,16 @@ async function main(): Promise<void> {
 
       // Session reset — intercept before storage, main group only
       if (
-        trimmed.startsWith('세션초기화 ') &&
+        (trimmed.startsWith('세션초기화 ') || trimmed === '세션초기화') &&
         registeredGroups[chatJid]?.isMain
       ) {
-        const targetInput = trimmed.slice('세션초기화 '.length).trim();
+        const targetInput = trimmed.slice('세션초기화'.length).trim();
+        if (targetInput === '전체') {
+          handleSessionResetAll(chatJid).catch((err) =>
+            logger.error({ err, chatJid }, 'Session reset all error'),
+          );
+          return;
+        }
         if (targetInput) {
           handleSessionReset(chatJid, targetInput).catch((err) =>
             logger.error({ err, chatJid }, 'Session reset error'),
