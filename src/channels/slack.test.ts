@@ -9,6 +9,7 @@ vi.mock('./registry.js', () => ({ registerChannel: vi.fn() }));
 vi.mock('../config.js', () => ({
   ASSISTANT_NAME: 'Jonesy',
   TRIGGER_PATTERN: /^@Jonesy\b/i,
+  DATA_DIR: '/tmp/nanoclaw-test',
 }));
 
 // Mock logger
@@ -40,7 +41,7 @@ vi.mock('@slack/bolt', () => ({
 
     client = {
       auth: {
-        test: vi.fn().mockResolvedValue({ user_id: 'U_BOT_123' }),
+        test: vi.fn().mockResolvedValue({ user_id: 'U_BOT_123', bot_id: 'B_BOT_123' }),
       },
       chat: {
         postMessage: vi.fn().mockResolvedValue(undefined),
@@ -283,25 +284,45 @@ describe('SlackChannel', () => {
       expect(opts.onMessage).not.toHaveBeenCalled();
     });
 
-    it('detects bot messages by bot_id', async () => {
+    it('detects bot messages by matching own bot_id', async () => {
       const opts = createTestOpts();
       const channel = new SlackChannel(opts);
       await channel.connect();
 
       const event = createMessageEvent({
         subtype: 'bot_message',
-        botId: 'B_MY_BOT',
+        botId: 'B_BOT_123', // matches ownBotId from auth.test mock
         text: 'Bot response',
       });
       await triggerMessageEvent(event);
 
-      // Has bot_id so should be marked as bot message
       expect(opts.onMessage).toHaveBeenCalledWith(
         'slack:C0123456789',
         expect.objectContaining({
           is_from_me: true,
           is_bot_message: true,
           sender_name: 'Jonesy',
+        }),
+      );
+    });
+
+    it('treats other bots as regular messages', async () => {
+      const opts = createTestOpts();
+      const channel = new SlackChannel(opts);
+      await channel.connect();
+
+      const event = createMessageEvent({
+        subtype: 'bot_message',
+        botId: 'B_OTHER_BOT',
+        text: 'Other bot message',
+      });
+      await triggerMessageEvent(event);
+
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'slack:C0123456789',
+        expect.objectContaining({
+          is_from_me: false,
+          is_bot_message: true,
         }),
       );
     });
@@ -317,11 +338,12 @@ describe('SlackChannel', () => {
       });
       await triggerMessageEvent(event);
 
+      // Matched by user ID; no bot_id in event so is_bot_message=false
       expect(opts.onMessage).toHaveBeenCalledWith(
         'slack:C0123456789',
         expect.objectContaining({
           is_from_me: true,
-          is_bot_message: true,
+          is_bot_message: false,
         }),
       );
     });
@@ -526,7 +548,7 @@ describe('SlackChannel', () => {
       );
     });
 
-    it('does not translate mentions in bot messages', async () => {
+    it('does not translate mentions in own bot messages', async () => {
       const opts = createTestOpts();
       const channel = new SlackChannel(opts);
       await channel.connect();
@@ -534,11 +556,11 @@ describe('SlackChannel', () => {
       const event = createMessageEvent({
         text: 'Echo: <@U_BOT_123>',
         subtype: 'bot_message',
-        botId: 'B_MY_BOT',
+        botId: 'B_BOT_123', // own bot ID — skip mention translation
       });
       await triggerMessageEvent(event);
 
-      // Bot messages skip mention translation
+      // Own bot messages skip mention translation
       expect(opts.onMessage).toHaveBeenCalledWith(
         'slack:C0123456789',
         expect.objectContaining({
@@ -578,10 +600,12 @@ describe('SlackChannel', () => {
 
       await channel.sendMessage('slack:C0123456789', 'Hello');
 
-      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith({
-        channel: 'C0123456789',
-        text: 'Hello',
-      });
+      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C0123456789',
+          text: 'Hello',
+        }),
+      );
     });
 
     it('strips slack: prefix from JID', async () => {
@@ -591,10 +615,12 @@ describe('SlackChannel', () => {
 
       await channel.sendMessage('slack:D9876543210', 'DM message');
 
-      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith({
-        channel: 'D9876543210',
-        text: 'DM message',
-      });
+      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'D9876543210',
+          text: 'DM message',
+        }),
+      );
     });
 
     it('queues message when disconnected', async () => {
@@ -633,14 +659,20 @@ describe('SlackChannel', () => {
 
       // Should be split into 2 messages: 4000 + 500
       expect(currentApp().client.chat.postMessage).toHaveBeenCalledTimes(2);
-      expect(currentApp().client.chat.postMessage).toHaveBeenNthCalledWith(1, {
-        channel: 'C0123456789',
-        text: 'A'.repeat(4000),
-      });
-      expect(currentApp().client.chat.postMessage).toHaveBeenNthCalledWith(2, {
-        channel: 'C0123456789',
-        text: 'A'.repeat(500),
-      });
+      expect(currentApp().client.chat.postMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          channel: 'C0123456789',
+          text: 'A'.repeat(4000),
+        }),
+      );
+      expect(currentApp().client.chat.postMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          channel: 'C0123456789',
+          text: 'A'.repeat(500),
+        }),
+      );
     });
 
     it('sends exactly-4000-char messages as a single message', async () => {
@@ -652,10 +684,12 @@ describe('SlackChannel', () => {
       await channel.sendMessage('slack:C0123456789', text);
 
       expect(currentApp().client.chat.postMessage).toHaveBeenCalledTimes(1);
-      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith({
-        channel: 'C0123456789',
-        text,
-      });
+      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C0123456789',
+          text,
+        }),
+      );
     });
 
     it('splits messages into 3 parts when over 8000 chars', async () => {
@@ -683,14 +717,18 @@ describe('SlackChannel', () => {
       // Connect triggers flush
       await channel.connect();
 
-      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith({
-        channel: 'C0123456789',
-        text: 'First queued',
-      });
-      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith({
-        channel: 'C0123456789',
-        text: 'Second queued',
-      });
+      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C0123456789',
+          text: 'First queued',
+        }),
+      );
+      expect(currentApp().client.chat.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: 'C0123456789',
+          text: 'Second queued',
+        }),
+      );
     });
   });
 

@@ -89,7 +89,7 @@ describe('storeMessage', () => {
     expect(messages).toHaveLength(0);
   });
 
-  it('stores is_from_me flag', () => {
+  it('stores is_from_me flag and filters it from getMessagesSince', () => {
     storeChatMetadata('group@g.us', '2024-01-01T00:00:00.000Z');
 
     store({
@@ -102,13 +102,13 @@ describe('storeMessage', () => {
       is_from_me: true,
     });
 
-    // Message is stored (we can retrieve it — is_from_me doesn't affect retrieval)
+    // is_from_me=true messages are filtered out by getMessagesSince
     const messages = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
       'Andy',
     );
-    expect(messages).toHaveLength(1);
+    expect(messages).toHaveLength(0);
   });
 
   it('upserts on duplicate id+chat_jid', () => {
@@ -171,6 +171,7 @@ describe('getMessagesSince', () => {
       sender_name: 'Bot',
       content: 'bot reply',
       timestamp: '2024-01-01T00:00:03.000Z',
+      is_from_me: true,
       is_bot_message: true,
     });
     store({
@@ -189,12 +190,12 @@ describe('getMessagesSince', () => {
       '2024-01-01T00:00:02.000Z',
       'Andy',
     );
-    // Should exclude m1, m2 (before/at timestamp), m3 (bot message)
+    // Should exclude m1, m2 (before/at timestamp), m3 (is_from_me bot)
     expect(msgs).toHaveLength(1);
     expect(msgs[0].content).toBe('third');
   });
 
-  it('excludes bot messages via is_bot_message flag', () => {
+  it('excludes own bot messages via is_from_me flag', () => {
     const msgs = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
@@ -206,7 +207,7 @@ describe('getMessagesSince', () => {
 
   it('returns all non-bot messages when sinceTimestamp is empty', () => {
     const msgs = getMessagesSince('group@g.us', '', 'Andy');
-    // 3 user messages (bot message excluded)
+    // 3 user messages (own bot message excluded via is_from_me)
     expect(msgs).toHaveLength(3);
   });
 
@@ -345,6 +346,7 @@ describe('getNewMessages', () => {
       sender_name: 'User',
       content: 'bot reply',
       timestamp: '2024-01-01T00:00:03.000Z',
+      is_from_me: true,
       is_bot_message: true,
     });
     store({

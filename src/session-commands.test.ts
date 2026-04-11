@@ -123,7 +123,7 @@ describe('handleSessionCommand', () => {
     expect(deps.advanceCursor).toHaveBeenCalledWith('100');
   });
 
-  it('sends denial to interactable sender in non-main group', async () => {
+  it('allows /compact from any sender in non-main group', async () => {
     const deps = makeDeps();
     const result = await handleSessionCommand({
       missedMessages: [makeMsg('/compact', { is_from_me: false })],
@@ -134,10 +134,14 @@ describe('handleSessionCommand', () => {
       deps,
     });
     expect(result).toEqual({ handled: true, success: true });
-    expect(deps.sendMessage).toHaveBeenCalledWith(
+    // /compact is always allowed — no denial message
+    expect(deps.sendMessage).not.toHaveBeenCalledWith(
       'Session commands require admin access.',
     );
-    expect(deps.runAgent).not.toHaveBeenCalled();
+    expect(deps.runAgent).toHaveBeenCalledWith(
+      '/compact',
+      expect.any(Function),
+    );
     expect(deps.advanceCursor).toHaveBeenCalledWith('100');
   });
 

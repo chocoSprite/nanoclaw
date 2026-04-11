@@ -190,7 +190,8 @@ export class SlackChannel implements Channel {
       // trigger processing (enabling bot-to-bot conversation).
       const isFromThisBot =
         msg.user === this.botUserId ||
-        (msg as BotMessageEvent).bot_id === this.ownBotId;
+        (this.ownBotId !== undefined &&
+          (msg as BotMessageEvent).bot_id === this.ownBotId);
       const isAnyBot = !!(msg as BotMessageEvent).bot_id;
 
       // Skip messages that @mention a bot we should ignore

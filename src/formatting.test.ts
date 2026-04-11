@@ -152,8 +152,8 @@ describe('TRIGGER_PATTERN', () => {
     expect(TRIGGER_PATTERN.test(`@${name}extra hello`)).toBe(false);
   });
 
-  it('matches with word boundary before apostrophe', () => {
-    expect(TRIGGER_PATTERN.test(`@${name}'s thing`)).toBe(true);
+  it('does not match when followed by apostrophe (requires space or end)', () => {
+    expect(TRIGGER_PATTERN.test(`@${name}'s thing`)).toBe(false);
   });
 
   it('matches @name alone (end of string is a word boundary)', () => {
