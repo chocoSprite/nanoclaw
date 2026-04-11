@@ -51,7 +51,7 @@ async function listGroups(limit: number): Promise<void> {
   const rows = db
     .prepare(
       `SELECT jid, name FROM chats
-     WHERE jid LIKE '%@g.us' AND jid <> '__group_sync__' AND name <> jid
+     WHERE jid LIKE '%@g.us' AND name <> jid
      ORDER BY last_message_time DESC
      LIMIT ?`,
     )
@@ -205,7 +205,7 @@ sock.ev.on('connection.update', async (update) => {
       const db = new Database(dbPath, { readonly: true });
       const row = db
         .prepare(
-          "SELECT COUNT(*) as count FROM chats WHERE jid LIKE '%@g.us' AND jid <> '__group_sync__'",
+          "SELECT COUNT(*) as count FROM chats WHERE jid LIKE '%@g.us'",
         )
         .get() as { count: number };
       groupsInDb = row.count;

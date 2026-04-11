@@ -32,6 +32,7 @@ function createSchema(database: Database.Database): void {
       timestamp TEXT,
       is_from_me INTEGER,
       is_bot_message INTEGER DEFAULT 0,
+      thread_id TEXT,
       PRIMARY KEY (id, chat_jid),
       FOREIGN KEY (chat_jid) REFERENCES chats(jid)
     );
@@ -48,7 +49,9 @@ function createSchema(database: Database.Database): void {
       last_run TEXT,
       last_result TEXT,
       status TEXT DEFAULT 'active',
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      context_mode TEXT DEFAULT 'isolated',
+      script TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_next_run ON scheduled_tasks(next_run);
     CREATE INDEX IF NOT EXISTS idx_status ON scheduled_tasks(status);
@@ -80,103 +83,105 @@ function createSchema(database: Database.Database): void {
       trigger_pattern TEXT NOT NULL,
       added_at TEXT NOT NULL,
       container_config TEXT,
-      requires_trigger INTEGER DEFAULT 1
+      requires_trigger INTEGER DEFAULT 1,
+      is_main INTEGER DEFAULT 0,
+      review_config TEXT,
+      sdk TEXT DEFAULT 'codex',
+      model TEXT
     );
   `);
 
-  // Add context_mode column if it doesn't exist (migration for existing DBs)
-  try {
-    database.exec(
-      `ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+  runMigrations(database);
+}
 
-  // Add script column if it doesn't exist (migration for existing DBs)
-  try {
-    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN script TEXT`);
-  } catch {
-    /* column already exists */
-  }
+// --- Version-based migrations (PRAGMA user_version) ---
 
-  // Add is_bot_message column if it doesn't exist (migration for existing DBs)
-  try {
-    database.exec(
-      `ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`,
-    );
-    // Backfill: mark existing bot messages that used the content prefix pattern
-    database
-      .prepare(`UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`)
-      .run(`${ASSISTANT_NAME}:%`);
-  } catch {
-    /* column already exists */
-  }
+type Migration = (database: Database.Database) => void;
 
-  // Add is_main column if it doesn't exist (migration for existing DBs)
-  try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN is_main INTEGER DEFAULT 0`,
-    );
-    // Backfill: existing rows with folder = 'main' are the main group
-    database.exec(
-      `UPDATE registered_groups SET is_main = 1 WHERE folder = 'main'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+/**
+ * Sequential migrations. Index 0 upgrades user_version 0→1, etc.
+ * Existing DBs (user_version=0) already have these columns from the old
+ * try/catch pattern — the ALTER TABLEs fail silently via try/catch.
+ * New DBs have all columns in CREATE TABLE, so ALTER TABLEs also fail silently.
+ */
+const migrations: Migration[] = [
+  // 1: scheduled_tasks.context_mode
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN context_mode TEXT DEFAULT 'isolated'`);
+    } catch { /* already exists */ }
+  },
+  // 2: scheduled_tasks.script
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE scheduled_tasks ADD COLUMN script TEXT`);
+    } catch { /* already exists */ }
+  },
+  // 3: messages.is_bot_message + backfill
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE messages ADD COLUMN is_bot_message INTEGER DEFAULT 0`);
+      db.prepare(`UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`)
+        .run(`${ASSISTANT_NAME}:%`);
+    } catch { /* already exists */ }
+  },
+  // 4: registered_groups.is_main + backfill
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE registered_groups ADD COLUMN is_main INTEGER DEFAULT 0`);
+      db.exec(`UPDATE registered_groups SET is_main = 1 WHERE folder = 'main'`);
+    } catch { /* already exists */ }
+  },
+  // 5: registered_groups.review_config
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE registered_groups ADD COLUMN review_config TEXT`);
+    } catch { /* already exists */ }
+  },
+  // 6: registered_groups.sdk
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE registered_groups ADD COLUMN sdk TEXT DEFAULT 'codex'`);
+    } catch { /* already exists */ }
+  },
+  // 7: registered_groups.model
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE registered_groups ADD COLUMN model TEXT`);
+    } catch { /* already exists */ }
+  },
+  // 8: messages.thread_id
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE messages ADD COLUMN thread_id TEXT`);
+    } catch { /* already exists */ }
+  },
+  // 9: chats.channel + chats.is_group + backfill
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE chats ADD COLUMN channel TEXT`);
+      db.exec(`ALTER TABLE chats ADD COLUMN is_group INTEGER DEFAULT 0`);
+      db.exec(`UPDATE chats SET channel = 'whatsapp', is_group = 1 WHERE jid LIKE '%@g.us'`);
+      db.exec(`UPDATE chats SET channel = 'whatsapp', is_group = 0 WHERE jid LIKE '%@s.whatsapp.net'`);
+      db.exec(`UPDATE chats SET channel = 'discord', is_group = 1 WHERE jid LIKE 'dc:%'`);
+      db.exec(`UPDATE chats SET channel = 'telegram', is_group = 0 WHERE jid LIKE 'tg:%'`);
+    } catch { /* already exists */ }
+  },
+  // 10: remove __group_sync__ sentinel from chats
+  (db) => {
+    db.exec(`DELETE FROM chats WHERE jid = '__group_sync__'`);
+  },
+];
 
-  // Add review_config column if it doesn't exist (migration for multi-agent review)
-  try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN review_config TEXT`,
-    );
-  } catch {
-    /* column already exists */
-  }
+/** Current schema version (= migrations.length). Exported for tests. */
+export const SCHEMA_VERSION = migrations.length;
 
-  // Add sdk column if it doesn't exist (migration for dual-SDK support)
-  try {
-    database.exec(
-      `ALTER TABLE registered_groups ADD COLUMN sdk TEXT DEFAULT 'codex'`,
-    );
-  } catch {
-    /* column already exists */
-  }
+function runMigrations(database: Database.Database): void {
+  const current = database.pragma('user_version', { simple: true }) as number;
 
-  // Add model column if it doesn't exist (migration for model selection)
-  try {
-    database.exec(`ALTER TABLE registered_groups ADD COLUMN model TEXT`);
-  } catch {
-    /* column already exists */
-  }
-
-  // Add thread_id column if it doesn't exist (migration for reply context)
-  try {
-    database.exec(`ALTER TABLE messages ADD COLUMN thread_id TEXT`);
-  } catch {
-    /* column already exists */
-  }
-
-  // Add channel and is_group columns if they don't exist (migration for existing DBs)
-  try {
-    database.exec(`ALTER TABLE chats ADD COLUMN channel TEXT`);
-    database.exec(`ALTER TABLE chats ADD COLUMN is_group INTEGER DEFAULT 0`);
-    // Backfill from JID patterns
-    database.exec(
-      `UPDATE chats SET channel = 'whatsapp', is_group = 1 WHERE jid LIKE '%@g.us'`,
-    );
-    database.exec(
-      `UPDATE chats SET channel = 'whatsapp', is_group = 0 WHERE jid LIKE '%@s.whatsapp.net'`,
-    );
-    database.exec(
-      `UPDATE chats SET channel = 'discord', is_group = 1 WHERE jid LIKE 'dc:%'`,
-    );
-    database.exec(
-      `UPDATE chats SET channel = 'telegram', is_group = 0 WHERE jid LIKE 'tg:%'`,
-    );
-  } catch {
-    /* columns already exist */
+  for (let i = current; i < migrations.length; i++) {
+    migrations[i](database);
+    database.pragma(`user_version = ${i + 1}`);
   }
 }
 
@@ -280,60 +285,10 @@ export function getAllChats(): ChatInfo[] {
 }
 
 /**
- * Get timestamp of last group metadata sync.
- */
-export function getLastGroupSync(): string | null {
-  // Store sync time in a special chat entry
-  const row = db
-    .prepare(`SELECT last_message_time FROM chats WHERE jid = '__group_sync__'`)
-    .get() as { last_message_time: string } | undefined;
-  return row?.last_message_time || null;
-}
-
-/**
- * Record that group metadata was synced.
- */
-export function setLastGroupSync(): void {
-  const now = new Date().toISOString();
-  db.prepare(
-    `INSERT OR REPLACE INTO chats (jid, name, last_message_time) VALUES ('__group_sync__', '__group_sync__', ?)`,
-  ).run(now);
-}
-
-/**
  * Store a message with full content.
  * Only call this for registered groups where message history is needed.
  */
 export function storeMessage(msg: NewMessage): void {
-  db.prepare(
-    `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, thread_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    msg.id,
-    msg.chat_jid,
-    msg.sender,
-    msg.sender_name,
-    msg.content,
-    msg.timestamp,
-    msg.is_from_me ? 1 : 0,
-    msg.is_bot_message ? 1 : 0,
-    msg.thread_id || null,
-  );
-}
-
-/**
- * Store a message directly.
- */
-export function storeMessageDirect(msg: {
-  id: string;
-  chat_jid: string;
-  sender: string;
-  sender_name: string;
-  content: string;
-  timestamp: string;
-  is_from_me: boolean;
-  is_bot_message?: boolean;
-  thread_id?: string;
-}): void {
   db.prepare(
     `INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, thread_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(

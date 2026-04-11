@@ -57,21 +57,6 @@ describe('getAvailableGroups', () => {
     expect(groups.map((g) => g.jid)).not.toContain('user@s.whatsapp.net');
   });
 
-  it('excludes __group_sync__ sentinel', () => {
-    storeChatMetadata('__group_sync__', '2024-01-01T00:00:00.000Z');
-    storeChatMetadata(
-      'group@g.us',
-      '2024-01-01T00:00:01.000Z',
-      'Group',
-      'whatsapp',
-      true,
-    );
-
-    const groups = getAvailableGroups();
-    expect(groups).toHaveLength(1);
-    expect(groups[0].jid).toBe('group@g.us');
-  });
-
   it('marks registered groups correctly', () => {
     storeChatMetadata(
       'reg@g.us',
