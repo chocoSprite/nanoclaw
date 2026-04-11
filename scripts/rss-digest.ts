@@ -90,11 +90,29 @@ async function main() {
   const results = await Promise.all(FEEDS.map((f) => fetchFeed(parser, f, since)));
   const allItems = results.flat().sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  const digest = formatDigest(allItems);
   console.error(`Found ${allItems.length} items`);
 
+  // Dedup: remove items already in previous day's file
+  let deduped = allItems;
   if (outDir) {
     fs.mkdirSync(outDir, { recursive: true });
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+    const prevFile = path.join(outDir, `${yesterday}.txt`);
+    if (fs.existsSync(prevFile)) {
+      const prevContent = fs.readFileSync(prevFile, 'utf-8');
+      const prevLinks = new Set(
+        [...prevContent.matchAll(/<([^|>]+)\|/g)].map((m) => m[1]),
+      );
+      const before = deduped.length;
+      deduped = deduped.filter((item) => !prevLinks.has(item.link));
+      console.error(`Dedup: ${before} → ${deduped.length} (removed ${before - deduped.length} duplicates from ${yesterday})`);
+    }
+  }
+
+  const digest = formatDigest(deduped);
+
+  if (outDir) {
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); // YYYY-MM-DD KST
     const filePath = path.join(outDir, `${today}.txt`);
     fs.writeFileSync(filePath, digest);

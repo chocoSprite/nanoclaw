@@ -527,7 +527,7 @@ export class SlackChannel implements Channel {
             file.name || 'audio',
           );
           if (transcriptPath) {
-            tags.push(`[Transcript: ${transcriptPath}]`);
+            tags.push(`[Transcript: ${transcriptPath} (source: ${file.name || 'audio'})]`);
           } else {
             tags.push(`[Audio: ${filePath} (transcription unavailable)]`);
           }

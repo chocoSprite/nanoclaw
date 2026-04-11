@@ -741,10 +741,7 @@ async function main(): Promise<void> {
     const match = findGroupByInput(targetInput);
     if (!match) {
       const list = Object.values(registeredGroups)
-        .map(
-          (g) =>
-            `  ${g.folder}`,
-        )
+        .map((g) => `  ${g.folder}`)
         .join('\n');
       await channel.sendMessage(
         chatJid,
