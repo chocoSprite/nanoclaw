@@ -474,11 +474,7 @@ describe('tryHandleRemoteControlCommand', () => {
 
   it('returns false for non-matching content', () => {
     expect(
-      tryHandleRemoteControlCommand(
-        'main-jid',
-        makeMsg('hello'),
-        makeDeps(),
-      ),
+      tryHandleRemoteControlCommand('main-jid', makeMsg('hello'), makeDeps()),
     ).toBe(false);
   });
 

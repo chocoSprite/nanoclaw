@@ -283,7 +283,11 @@ describe('shouldDropBySenderAllowlist', () => {
 
   it('returns false for is_from_me messages (no config read)', () => {
     expect(
-      shouldDropBySenderAllowlist('g1', makeMsg({ is_from_me: true }), registered),
+      shouldDropBySenderAllowlist(
+        'g1',
+        makeMsg({ is_from_me: true }),
+        registered,
+      ),
     ).toBe(false);
   });
 
@@ -312,7 +316,9 @@ describe('shouldDropBySenderAllowlist', () => {
         logDenied: false,
       }),
     );
-    expect(shouldDropBySenderAllowlist('g1', makeMsg(), registered)).toBe(false);
+    expect(shouldDropBySenderAllowlist('g1', makeMsg(), registered)).toBe(
+      false,
+    );
   });
 
   it('returns true in drop mode when sender not in allowlist', () => {
@@ -339,7 +345,11 @@ describe('shouldDropBySenderAllowlist', () => {
       }),
     );
     expect(
-      shouldDropBySenderAllowlist('g1', makeMsg({ sender: 'alice' }), registered),
+      shouldDropBySenderAllowlist(
+        'g1',
+        makeMsg({ sender: 'alice' }),
+        registered,
+      ),
     ).toBe(false);
   });
 });

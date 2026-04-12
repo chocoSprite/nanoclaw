@@ -8,10 +8,7 @@ import {
   resetGroupSession,
   tryHandleSessionResetCommand,
 } from './session-reset.js';
-import type {
-  SessionHandlerDeps,
-  SessionResetDeps,
-} from './session-reset.js';
+import type { SessionHandlerDeps, SessionResetDeps } from './session-reset.js';
 import type { NewMessage, RegisteredGroup } from './types.js';
 
 vi.mock('./logger.js', () => ({
@@ -324,7 +321,11 @@ describe('tryHandleSessionResetCommand', () => {
   it('returns true and dispatches for 세션초기화 전체', async () => {
     const deps = makeDeps(tmpDir);
     expect(
-      tryHandleSessionResetCommand('main-jid', makeMsg('세션초기화 전체'), deps),
+      tryHandleSessionResetCommand(
+        'main-jid',
+        makeMsg('세션초기화 전체'),
+        deps,
+      ),
     ).toBe(true);
 
     // Wait for fire-and-forget
