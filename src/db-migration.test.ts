@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 
-import { SCHEMA_VERSION } from './db.js';
+import { SCHEMA_VERSION } from './db-schema.js';
 
 describe('database migrations', () => {
   it('defaults Telegram backfill chats to direct messages', async () => {
