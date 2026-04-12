@@ -20,8 +20,6 @@ import {
   ContainerOutput,
   resolveModel,
   runContainerAgent,
-  writeAllTasksSnapshots,
-  writeGroupsSnapshot,
 } from './container-runner.js';
 import {
   cleanupOrphans,
@@ -48,6 +46,7 @@ import {
   rollbackCursor,
   setCursor,
   state,
+  writeGroupsSnapshot,
 } from './group-state.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -77,7 +76,10 @@ import {
   tryHandleLabDashboardCommand,
   type LabDashboardCommandDeps,
 } from './lab-dashboard.js';
-import { startSchedulerLoop } from './task-scheduler.js';
+import {
+  startSchedulerLoop,
+  writeAllTasksSnapshots,
+} from './task-scheduler.js';
 import { Channel, ChannelType, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 

@@ -1,12 +1,11 @@
 import { ChildProcess } from 'child_process';
 import fs from 'fs';
+import path from 'path';
 
 import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL } from './config.js';
 import {
   ContainerOutput,
-  mapTasksToSnapshots,
   runContainerAgent,
-  writeTasksSnapshot,
   resolveModel,
 } from './container-runner.js';
 import {
@@ -18,7 +17,10 @@ import {
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
-import { resolveGroupFolderPath } from './group-folder.js';
+import {
+  resolveGroupFolderPath,
+  resolveGroupIpcPath,
+} from './group-folder.js';
 import { logger } from './logger.js';
 import { computeNextRun } from './schedule-utils.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
@@ -236,4 +238,58 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
 /** @internal - for tests only. */
 export function _resetSchedulerLoopForTests(): void {
   schedulerRunning = false;
+}
+
+/** Map DB tasks to the snapshot format consumed by containers. */
+export function mapTasksToSnapshots(
+  tasks: ScheduledTask[],
+): Array<Parameters<typeof writeTasksSnapshot>[2][number]> {
+  return tasks.map((t) => ({
+    id: t.id,
+    groupFolder: t.group_folder,
+    prompt: t.prompt,
+    script: t.script ?? undefined,
+    schedule_type: t.schedule_type,
+    schedule_value: t.schedule_value,
+    status: t.status,
+    next_run: t.next_run,
+  }));
+}
+
+/** Write tasks snapshot to all registered groups at once. */
+export function writeAllTasksSnapshots(
+  groups: Record<string, RegisteredGroup>,
+  tasks: ScheduledTask[],
+): void {
+  const rows = mapTasksToSnapshots(tasks);
+  for (const group of Object.values(groups)) {
+    writeTasksSnapshot(group.folder, group.isMain === true, rows);
+  }
+}
+
+export function writeTasksSnapshot(
+  groupFolder: string,
+  isMain: boolean,
+  tasks: Array<{
+    id: string;
+    groupFolder: string;
+    prompt: string;
+    script?: string | null;
+    schedule_type: string;
+    schedule_value: string;
+    status: string;
+    next_run: string | null;
+  }>,
+): void {
+  // Write filtered tasks to the group's IPC directory
+  const groupIpcDir = resolveGroupIpcPath(groupFolder);
+  fs.mkdirSync(groupIpcDir, { recursive: true });
+
+  // Main sees all tasks, others only see their own
+  const filteredTasks = isMain
+    ? tasks
+    : tasks.filter((t) => t.groupFolder === groupFolder);
+
+  const tasksFile = path.join(groupIpcDir, 'current_tasks.json');
+  fs.writeFileSync(tasksFile, JSON.stringify(filteredTasks, null, 2));
 }

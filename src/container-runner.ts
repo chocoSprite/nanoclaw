@@ -16,7 +16,7 @@ import {
 } from './config.js';
 import { applyCredentialArgs } from './container-credentials.js';
 import { VolumeMount, buildVolumeMounts } from './container-mounts.js';
-import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
+import { resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 import {
   CONTAINER_RUNTIME_BIN,
@@ -24,7 +24,7 @@ import {
   readonlyMountArgs,
   stopContainer,
 } from './container-runtime.js';
-import { RegisteredGroup, ScheduledTask } from './types.js';
+import { RegisteredGroup } from './types.js';
 
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
@@ -533,96 +533,4 @@ export async function runContainerAgent(
       });
     });
   });
-}
-
-/** Map DB tasks to the snapshot format consumed by containers. */
-export function mapTasksToSnapshots(
-  tasks: ScheduledTask[],
-): Array<Parameters<typeof writeTasksSnapshot>[2][number]> {
-  return tasks.map((t) => ({
-    id: t.id,
-    groupFolder: t.group_folder,
-    prompt: t.prompt,
-    script: t.script ?? undefined,
-    schedule_type: t.schedule_type,
-    schedule_value: t.schedule_value,
-    status: t.status,
-    next_run: t.next_run,
-  }));
-}
-
-/** Write tasks snapshot to all registered groups at once. */
-export function writeAllTasksSnapshots(
-  groups: Record<string, RegisteredGroup>,
-  tasks: ScheduledTask[],
-): void {
-  const rows = mapTasksToSnapshots(tasks);
-  for (const group of Object.values(groups)) {
-    writeTasksSnapshot(group.folder, group.isMain === true, rows);
-  }
-}
-
-export function writeTasksSnapshot(
-  groupFolder: string,
-  isMain: boolean,
-  tasks: Array<{
-    id: string;
-    groupFolder: string;
-    prompt: string;
-    script?: string | null;
-    schedule_type: string;
-    schedule_value: string;
-    status: string;
-    next_run: string | null;
-  }>,
-): void {
-  // Write filtered tasks to the group's IPC directory
-  const groupIpcDir = resolveGroupIpcPath(groupFolder);
-  fs.mkdirSync(groupIpcDir, { recursive: true });
-
-  // Main sees all tasks, others only see their own
-  const filteredTasks = isMain
-    ? tasks
-    : tasks.filter((t) => t.groupFolder === groupFolder);
-
-  const tasksFile = path.join(groupIpcDir, 'current_tasks.json');
-  fs.writeFileSync(tasksFile, JSON.stringify(filteredTasks, null, 2));
-}
-
-export interface AvailableGroup {
-  jid: string;
-  name: string;
-  lastActivity: string;
-  isRegistered: boolean;
-}
-
-/**
- * Write available groups snapshot for the container to read.
- * Only main group can see all available groups (for activation).
- * Non-main groups only see their own registration status.
- */
-export function writeGroupsSnapshot(
-  groupFolder: string,
-  isMain: boolean,
-  groups: AvailableGroup[],
-  _registeredJids: Set<string>,
-): void {
-  const groupIpcDir = resolveGroupIpcPath(groupFolder);
-  fs.mkdirSync(groupIpcDir, { recursive: true });
-
-  // Main sees all groups; others see nothing (they can't activate groups)
-  const visibleGroups = isMain ? groups : [];
-
-  const groupsFile = path.join(groupIpcDir, 'available_groups.json');
-  fs.writeFileSync(
-    groupsFile,
-    JSON.stringify(
-      {
-        groups: visibleGroups,
-        lastSync: new Date().toISOString(),
-      },
-      null,
-      2,
-    ),
-  );
 }

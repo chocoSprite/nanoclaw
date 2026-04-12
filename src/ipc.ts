@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, IPC_POLL_INTERVAL } from './config.js';
-import { AvailableGroup } from './container-runner.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
+import { AvailableGroup } from './group-state.js';
 import { logger } from './logger.js';
 import { computeInitialNextRun } from './schedule-utils.js';
 import { RegisteredGroup } from './types.js';
