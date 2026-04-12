@@ -10,7 +10,7 @@ import {
   formatMessages,
   formatOutbound,
   stripInternalTags,
-} from './router.js';
+} from './formatting.js';
 import { parseTextStyles, parseSignalStyles } from './text-styles.js';
 import { NewMessage } from './types.js';
 

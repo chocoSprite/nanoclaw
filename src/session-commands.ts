@@ -1,6 +1,6 @@
 import type { NewMessage } from './types.js';
 import { logger } from './logger.js';
-import { stripInternalTags } from './router.js';
+import { stripInternalTags } from './formatting.js';
 
 /**
  * Extract a session slash command from a message, stripping the trigger prefix if present.

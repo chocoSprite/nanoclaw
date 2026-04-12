@@ -51,11 +51,11 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
 import {
-  findChannel,
   formatMessages,
   formatOutbound,
   stripInternalTags,
-} from './router.js';
+} from './formatting.js';
+import { findChannel } from './router.js';
 import {
   restoreRemoteControl,
   tryHandleRemoteControlCommand,
@@ -82,9 +82,6 @@ import {
 } from './task-scheduler.js';
 import { Channel, ChannelType, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
-
-// Re-export for backwards compatibility during refactor
-export { escapeXml, formatMessages } from './router.js';
 
 let messageLoopRunning = false;
 
