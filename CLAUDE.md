@@ -13,7 +13,8 @@ Single Node.js process with skill-based channel system. Channels (WhatsApp, Tele
 | `src/index.ts` | Orchestrator: state, message loop, agent invocation |
 | `src/channels/registry.ts` | Channel registry (self-registration at startup) |
 | `src/ipc.ts` | IPC watcher and task processing |
-| `src/router.ts` | Message formatting and outbound routing |
+| `src/router.ts` | Resolves the owning channel for a JID |
+| `src/formatting.ts` | Message formatting helpers (escape, format, strip, outbound) |
 | `src/config.ts` | Trigger pattern, paths, intervals |
 | `src/container-runner.ts` | Spawns agent containers with mounts |
 | `src/task-scheduler.ts` | Runs scheduled tasks |

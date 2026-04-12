@@ -221,7 +221,8 @@ Channels self-register using a barrel-import pattern:
 | `src/channels/index.ts` | Barrel imports that trigger channel self-registration |
 | `src/types.ts` | `Channel` interface, `ChannelOpts`, message types |
 | `src/index.ts` | Orchestrator — instantiates channels, runs message loop |
-| `src/router.ts` | Finds the owning channel for a JID, formats messages |
+| `src/router.ts` | Finds the owning channel for a JID |
+| `src/formatting.ts` | Message formatting helpers (escape, format, strip, outbound) |
 
 ### Adding a New Channel
 
@@ -257,7 +258,8 @@ nanoclaw/
 │   │   ├── registry.ts            # Channel factory registry
 │   │   └── index.ts               # Barrel imports for channel self-registration
 │   ├── ipc.ts                     # IPC watcher and task processing
-│   ├── router.ts                  # Message formatting and outbound routing
+│   ├── router.ts                  # Finds the owning channel for a JID
+│   ├── formatting.ts              # Message formatting helpers
 │   ├── config.ts                  # Configuration constants
 │   ├── types.ts                   # TypeScript interfaces (includes Channel)
 │   ├── logger.ts                  # Pino logger setup
