@@ -15,15 +15,8 @@ import path from 'path';
 
 import { OneCLI } from '@onecli-sh/sdk';
 
-import {
-  ASSISTANT_NAME,
-  GROUPS_DIR,
-  ONECLI_URL,
-} from './config.js';
-import {
-  AvailableGroup,
-  writeGroupsSnapshot,
-} from './container-runner.js';
+import { ASSISTANT_NAME, GROUPS_DIR, ONECLI_URL } from './config.js';
+import { AvailableGroup, writeGroupsSnapshot } from './container-runner.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -58,10 +51,7 @@ export function getPhysicalChannel(jid: string): string {
   return jid.replace(/^[^:]+:/, '');
 }
 
-export function ensureOneCLIAgent(
-  jid: string,
-  group: RegisteredGroup,
-): void {
+export function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
   if (group.isMain) return;
   const identifier = group.folder.toLowerCase().replace(/_/g, '-');
   onecli.ensureAgent({ name: group.name, identifier }).then(
