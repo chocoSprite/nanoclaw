@@ -1,8 +1,10 @@
 #!/bin/bash
 # Daily backup of messages.db — keeps last 14 days
 
-DB="/Users/jhheo/Documents/nanoclaw/store/messages.db"
-BACKUP_DIR="/Users/jhheo/Documents/nanoclaw/store/backups"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DB="$PROJECT_ROOT/store/messages.db"
+BACKUP_DIR="$PROJECT_ROOT/store/backups"
 DATE=$(date +%Y%m%d)
 MAX_DAYS=14
 
