@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in containers and handles IPC
  */
-import { ChildProcess, exec, execSync, spawn } from 'child_process';
+import { ChildProcess, exec, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -12,14 +12,10 @@ import {
   CONTAINER_TIMEOUT,
   DATA_DIR,
   IDLE_TIMEOUT,
-  ONECLI_URL,
   TIMEZONE,
 } from './config.js';
-import {
-  VolumeMount,
-  buildVolumeMounts,
-  normalizeOneCLIMounts,
-} from './container-mounts.js';
+import { applyCredentialArgs } from './container-credentials.js';
+import { VolumeMount, buildVolumeMounts } from './container-mounts.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import {
@@ -28,10 +24,7 @@ import {
   readonlyMountArgs,
   stopContainer,
 } from './container-runtime.js';
-import { OneCLI } from '@onecli-sh/sdk';
 import { RegisteredGroup, ScheduledTask } from './types.js';
-
-const onecli = new OneCLI({ url: ONECLI_URL });
 
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
@@ -90,58 +83,7 @@ async function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
-  // OneCLI gateway handles credential injection — containers never see real secrets.
-  // The gateway intercepts HTTPS traffic and injects API keys or OAuth tokens.
-  const onecliApplied = await onecli.applyContainerConfig(args, {
-    addHostMapping: false, // Nanoclaw already handles host gateway
-    agent: agentIdentifier,
-  });
-  if (onecliApplied) {
-    normalizeOneCLIMounts(args);
-    // OneCLI injects ANTHROPIC_API_KEY=placeholder by default — strip it unconditionally.
-    // Neither Codex nor Claude SDK uses this; Codex uses OpenAI, Claude uses OAuth.
-    for (let i = args.length - 1; i >= 0; i--) {
-      if (args[i] === '-e' && args[i + 1]?.startsWith('ANTHROPIC_API_KEY=')) {
-        args.splice(i, 2);
-      }
-    }
-    // Claude SDK: inject OAuth token from macOS keychain.
-    // OneCLI proxy is kept for other services (kakao, etc).
-    if (sdk === 'claude') {
-      // Remove any CLAUDE_CODE_OAUTH_TOKEN placeholder from OneCLI
-      for (let i = args.length - 1; i >= 0; i--) {
-        if (
-          args[i] === '-e' &&
-          args[i + 1]?.startsWith('CLAUDE_CODE_OAUTH_TOKEN=')
-        ) {
-          args.splice(i, 2);
-        }
-      }
-      try {
-        const creds = JSON.parse(
-          execSync(
-            'security find-generic-password -s "Claude Code-credentials" -w',
-            { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
-          ).trim(),
-        );
-        const oauthToken = creds?.claudeAiOauth?.accessToken;
-        if (oauthToken) {
-          args.push('-e', `CLAUDE_CODE_OAUTH_TOKEN=${oauthToken}`);
-        }
-      } catch (err) {
-        logger.warn(
-          { containerName, err: String(err) },
-          'Failed to read Claude OAuth token from keychain',
-        );
-      }
-    }
-    logger.info({ containerName }, 'OneCLI gateway config applied');
-  } else {
-    logger.warn(
-      { containerName },
-      'OneCLI gateway not reachable — container will have no credentials',
-    );
-  }
+  await applyCredentialArgs(args, containerName, agentIdentifier, sdk);
 
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
