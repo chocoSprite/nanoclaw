@@ -5,12 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const MOCK_ALLOWLIST_PATH = '/tmp/nanoclaw-allowlist-test-default.json';
 
-vi.mock('./config.js', () => ({
-  SENDER_ALLOWLIST_PATH: '/tmp/nanoclaw-allowlist-test-default.json',
-}));
+vi.mock('./config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./config.js')>();
+  return {
+    ...actual,
+    SENDER_ALLOWLIST_PATH: '/tmp/nanoclaw-allowlist-test-default.json',
+  };
+});
 
 import {
   _clearAllowlistCache,
+  hasAllowedTrigger,
   isSenderAllowed,
   isTriggerAllowed,
   loadSenderAllowlist,
@@ -241,6 +246,104 @@ describe('isTriggerAllowed', () => {
     };
     isTriggerAllowed('g1', 'eve', cfg);
     // Logger.debug is called — we just verify no crash; logger is a real pino instance
+  });
+});
+
+describe('hasAllowedTrigger', () => {
+  function makeGroup(overrides: Partial<RegisteredGroup> = {}): RegisteredGroup {
+    return {
+      name: 'Test',
+      folder: 'slack_test',
+      trigger: '@test',
+      added_at: '2026-01-01',
+      sdk: 'codex',
+      ...overrides,
+    };
+  }
+
+  function makeMsg(overrides: Partial<NewMessage> = {}): NewMessage {
+    return {
+      id: 'm1',
+      chat_jid: 'g1',
+      sender: 'alice',
+      sender_name: 'Alice',
+      content: '@test hi',
+      timestamp: '2026-04-12T00:00:00Z',
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    _clearAllowlistCache();
+  });
+
+  afterEach(() => {
+    try {
+      fs.unlinkSync(MOCK_ALLOWLIST_PATH);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('returns true for main group regardless of messages', () => {
+    const group = makeGroup({ isMain: true });
+    expect(hasAllowedTrigger(group, [], 'g1')).toBe(true);
+    expect(hasAllowedTrigger(group, [makeMsg({ content: 'nope' })], 'g1')).toBe(
+      true,
+    );
+  });
+
+  it('returns true when requiresTrigger is false', () => {
+    const group = makeGroup({ requiresTrigger: false });
+    expect(hasAllowedTrigger(group, [makeMsg({ content: 'nope' })], 'g1')).toBe(
+      true,
+    );
+  });
+
+  it('returns true when a message matches trigger and sender is allowed (default allow-all)', () => {
+    const group = makeGroup();
+    expect(hasAllowedTrigger(group, [makeMsg()], 'g1')).toBe(true);
+  });
+
+  it('returns false when no message matches the trigger pattern', () => {
+    const group = makeGroup();
+    expect(
+      hasAllowedTrigger(group, [makeMsg({ content: 'hello world' })], 'g1'),
+    ).toBe(false);
+  });
+
+  it('returns false when trigger matches but sender is not allowlisted', () => {
+    fs.writeFileSync(
+      MOCK_ALLOWLIST_PATH,
+      JSON.stringify({
+        default: { allow: ['bob'], mode: 'trigger' },
+        chats: {},
+        logDenied: false,
+      }),
+    );
+    const group = makeGroup();
+    expect(
+      hasAllowedTrigger(group, [makeMsg({ sender: 'eve' })], 'g1'),
+    ).toBe(false);
+  });
+
+  it('bypasses allowlist for is_from_me messages', () => {
+    fs.writeFileSync(
+      MOCK_ALLOWLIST_PATH,
+      JSON.stringify({
+        default: { allow: ['bob'], mode: 'trigger' },
+        chats: {},
+        logDenied: false,
+      }),
+    );
+    const group = makeGroup();
+    expect(
+      hasAllowedTrigger(
+        group,
+        [makeMsg({ sender: 'eve', is_from_me: true })],
+        'g1',
+      ),
+    ).toBe(true);
   });
 });
 

@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-import { SENDER_ALLOWLIST_PATH } from './config.js';
+import { getTriggerPattern, SENDER_ALLOWLIST_PATH } from './config.js';
 import { logger } from './logger.js';
 import type { NewMessage, RegisteredGroup } from './types.js';
 
@@ -158,6 +158,28 @@ export function isTriggerAllowed(
     );
   }
   return allowed;
+}
+
+/**
+ * Returns true if the group should be processed: main/no-trigger groups always pass;
+ * otherwise at least one message must match the trigger pattern AND come from an
+ * allowlisted sender (or from the bot itself).
+ */
+export function hasAllowedTrigger(
+  group: RegisteredGroup,
+  messages: NewMessage[],
+  chatJid: string,
+): boolean {
+  if (group.isMain === true) return true;
+  if (group.requiresTrigger === false) return true;
+
+  const pattern = getTriggerPattern(group.trigger);
+  const cfg = loadSenderAllowlist();
+  return messages.some(
+    (m) =>
+      pattern.test(m.content.trim()) &&
+      (m.is_from_me || isTriggerAllowed(chatJid, m.sender, cfg)),
+  );
 }
 
 /**

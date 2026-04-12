@@ -64,6 +64,7 @@ import {
   type RemoteControlCommandDeps,
 } from './remote-control.js';
 import {
+  hasAllowedTrigger,
   isTriggerAllowed,
   loadSenderAllowlist,
   shouldDropBySenderAllowlist,
@@ -186,18 +187,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   if (cmdResult?.handled) return cmdResult.success;
   // --- End session command interception ---
 
-  // For non-main groups, check if trigger is required and present
-  if (!isMainGroup && group.requiresTrigger !== false) {
-    const triggerPattern = getTriggerPattern(group.trigger);
-    const allowlistCfg = loadSenderAllowlist();
-    const hasTrigger = missedMessages.some(
-      (m) =>
-        triggerPattern.test(m.content.trim()) &&
-        (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-    );
-    if (!hasTrigger) {
-      return true;
-    }
+  if (!hasAllowedTrigger(group, missedMessages, chatJid)) {
+    return true;
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
@@ -386,19 +377,8 @@ async function startMessageLoop(): Promise<void> {
         if (pending.length === 0) continue;
 
         const isMainGroup = group.isMain === true;
-        const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
 
-        if (needsTrigger) {
-          const triggerPattern = getTriggerPattern(group.trigger);
-          const allowlistCfg = loadSenderAllowlist();
-          const hasTrigger = pending.some(
-            (m) =>
-              triggerPattern.test(m.content.trim()) &&
-              (m.is_from_me ||
-                isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
-          );
-          if (!hasTrigger) continue;
-        }
+        if (!hasAllowedTrigger(group, pending, chatJid)) continue;
 
         const channel = findChannel(channels, chatJid);
         if (!channel) continue;
