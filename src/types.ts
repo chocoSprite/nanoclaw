@@ -1,3 +1,11 @@
+/** Physical channel type used for channel-native text-style rendering and routing. */
+export type ChannelType =
+  | 'signal'
+  | 'whatsapp'
+  | 'telegram'
+  | 'slack'
+  | 'discord';
+
 export interface AdditionalMount {
   hostPath: string; // Absolute path on host (supports ~ for home)
   containerPath?: string; // Optional — defaults to basename of hostPath. Mounted at /workspace/extra/{value}

@@ -57,7 +57,6 @@ import {
   formatOutbound,
   stripInternalTags,
 } from './router.js';
-import { ChannelType } from './text-styles.js';
 import {
   restoreRemoteControl,
   tryHandleRemoteControlCommand,
@@ -79,7 +78,7 @@ import {
   type LabDashboardCommandDeps,
 } from './lab-dashboard.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import { Channel, NewMessage, RegisteredGroup } from './types.js';
+import { Channel, ChannelType, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 
 // Re-export for backwards compatibility during refactor
