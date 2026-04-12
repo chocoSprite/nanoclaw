@@ -17,10 +17,7 @@ import {
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
-import {
-  resolveGroupFolderPath,
-  resolveGroupIpcPath,
-} from './group-folder.js';
+import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { computeNextRun } from './schedule-utils.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
