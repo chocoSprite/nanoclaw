@@ -78,7 +78,7 @@ export interface SlackChannelOpts {
 
 // Module-level shared map: triggerName → Slack user ID.
 // Populated by each SlackChannel on connect(). Used to translate
-// outbound @mentions (e.g. "@매트") into Slack <@UID> format.
+// outbound @mentions (e.g. "@Reviewer") into Slack <@UID> format.
 const botMentionMap = new Map<string, string>();
 
 export class SlackChannel implements Channel {
@@ -339,7 +339,7 @@ export class SlackChannel implements Channel {
       return;
     }
 
-    // Translate @mentions (e.g. "@매트") to Slack <@UID> format
+    // Translate @mentions (e.g. "@Reviewer") to Slack <@UID> format
     const mentionTranslated = this.translateOutboundMentions(text);
 
     // Extract files (images + general) from agent output
@@ -430,7 +430,7 @@ export class SlackChannel implements Channel {
     if (!text.includes('@')) return text;
     let result = text;
 
-    // Bot mentions (e.g. @매트 → <@U...>)
+    // Bot mentions (e.g. @Reviewer → <@U...>)
     for (const [name, uid] of botMentionMap) {
       if (result.includes(`@${name}`)) {
         result = result.replaceAll(`@${name}`, `<@${uid}>`);

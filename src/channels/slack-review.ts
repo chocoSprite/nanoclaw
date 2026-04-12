@@ -1,5 +1,5 @@
 /**
- * Slack Review Channel (매트/Mat)
+ * Slack Review Channel
  *
  * Second Slack bot for code review in multi-agent channels.
  * Reuses SlackChannel with different tokens and JID prefix.
@@ -32,7 +32,7 @@ registerChannel('slack-review', (opts: ChannelOpts) => {
       appTokenKey: 'SLACK_REVIEW_APP_TOKEN',
       jidPrefix: 'slack-review',
       requireMention: true,
-      triggerName: envVars.REVIEW_ASSISTANT_NAME || '매트',
+      triggerName: envVars.REVIEW_ASSISTANT_NAME || 'Reviewer',
     },
   });
 });

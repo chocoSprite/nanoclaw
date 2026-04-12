@@ -12,7 +12,7 @@ export function extractSessionCommand(
 ): string | null {
   let text = content.trim();
   text = text.replace(triggerPattern, '').trim();
-  // Strip Slack user mentions (e.g. <@U0AQE91LHKL>) that may follow the trigger
+  // Strip Slack user mentions (e.g. <@U12345678>) that may follow the trigger
   text = text.replace(/<@[A-Z0-9]+>/g, '').trim();
   if (text === '/compact') return '/compact';
   return null;

@@ -132,7 +132,7 @@ export async function resetGroupSession(
 
 /**
  * Match user input to a registered group.
- * Accepts: short name (agent-meeting-notes), full folder (slack_agent_meeting_notes), or display name (패트).
+ * Accepts: short name (agent-meeting-notes), full folder (slack_agent_meeting_notes), or display name (Andy).
  */
 export function findGroupByInput(
   input: string,
