@@ -2,6 +2,7 @@ import fs from 'fs';
 
 import { SENDER_ALLOWLIST_PATH } from './config.js';
 import { logger } from './logger.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 export interface ChatAllowlistEntry {
   allow: '*' | string[];
@@ -157,4 +158,27 @@ export function isTriggerAllowed(
     );
   }
   return allowed;
+}
+
+/**
+ * Returns true if the message should be dropped before storage (drop mode + sender denied).
+ * Ignores bot/self messages and messages to unregistered groups.
+ */
+export function shouldDropBySenderAllowlist(
+  chatJid: string,
+  msg: NewMessage,
+  registeredGroups: Record<string, RegisteredGroup>,
+): boolean {
+  if (msg.is_from_me || msg.is_bot_message) return false;
+  if (!registeredGroups[chatJid]) return false;
+  const cfg = loadSenderAllowlist();
+  if (!shouldDropMessage(chatJid, cfg)) return false;
+  if (isSenderAllowed(chatJid, msg.sender, cfg)) return false;
+  if (cfg.logDenied) {
+    logger.debug(
+      { chatJid, sender: msg.sender },
+      'sender-allowlist: dropping message (drop mode)',
+    );
+  }
+  return true;
 }

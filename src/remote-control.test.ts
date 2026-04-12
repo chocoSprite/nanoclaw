@@ -18,9 +18,12 @@ import {
   stopRemoteControl,
   restoreRemoteControl,
   getActiveSession,
+  tryHandleRemoteControlCommand,
   _resetForTesting,
   _getStateFilePath,
 } from './remote-control.js';
+import type { RemoteControlCommandDeps } from './remote-control.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 // --- Helpers ---
 
@@ -419,5 +422,109 @@ describe('handleRemoteControlCommand', () => {
 
     expect(sendMessage).not.toHaveBeenCalled();
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+});
+
+// --- tryHandleRemoteControlCommand ---
+
+describe('tryHandleRemoteControlCommand', () => {
+  function makeMsg(content: string): NewMessage {
+    return {
+      id: 'm1',
+      chat_jid: 'main-jid',
+      sender: 'alice',
+      sender_name: 'Alice',
+      content,
+      timestamp: '2026-04-12T00:00:00Z',
+    };
+  }
+
+  function makeGroup(isMain: boolean): RegisteredGroup {
+    return {
+      name: 'Test',
+      folder: 'slack_test',
+      trigger: '@test',
+      added_at: '2026-01-01',
+      sdk: 'codex',
+      isMain,
+    };
+  }
+
+  function makeDeps(
+    overrides: Partial<RemoteControlCommandDeps> = {},
+  ): RemoteControlCommandDeps {
+    return {
+      registeredGroups: {
+        'main-jid': makeGroup(true),
+        'other-jid': makeGroup(false),
+      },
+      cwd: '/cwd',
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    _resetForTesting();
+  });
+
+  afterEach(() => {
+    _resetForTesting();
+  });
+
+  it('returns false for non-matching content', () => {
+    expect(
+      tryHandleRemoteControlCommand(
+        'main-jid',
+        makeMsg('hello'),
+        makeDeps(),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns true for /remote-control on main group', () => {
+    expect(
+      tryHandleRemoteControlCommand(
+        'main-jid',
+        makeMsg('/remote-control'),
+        makeDeps(),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns true for /remote-control-end', () => {
+    expect(
+      tryHandleRemoteControlCommand(
+        'main-jid',
+        makeMsg('/remote-control-end'),
+        makeDeps(),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns true on non-main group but handler silently rejects', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    expect(
+      tryHandleRemoteControlCommand(
+        'other-jid',
+        makeMsg('/remote-control'),
+        makeDeps({ sendMessage }),
+      ),
+    ).toBe(true);
+
+    // Wait for fire-and-forget
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Non-main group — handler short-circuits, no sendMessage call
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('trims whitespace before matching', () => {
+    expect(
+      tryHandleRemoteControlCommand(
+        'main-jid',
+        makeMsg('  /remote-control-end  '),
+        makeDeps(),
+      ),
+    ).toBe(true);
   });
 });

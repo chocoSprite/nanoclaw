@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import type { RegisteredGroup } from './types.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 import { logger } from './logger.js';
 
@@ -233,4 +233,36 @@ export async function handleSessionResetAll(
     chatJid,
     `:arrows_counterclockwise: *전체 세션 초기화 완료* (${groups.length}개)\n${results.map((r) => `• ${r}`).join('\n')}`,
   );
+}
+
+/**
+ * Intercept "세션초기화 <target>" or "세션초기화 전체" on the main group.
+ * Returns true if handled (caller should stop pipeline), false otherwise.
+ * Bare "세션초기화" with no target is NOT intercepted — falls through to normal message flow.
+ * Dispatch is fire-and-forget; errors are logged.
+ */
+export function tryHandleSessionResetCommand(
+  chatJid: string,
+  msg: NewMessage,
+  deps: SessionHandlerDeps,
+): boolean {
+  const trimmed = msg.content.trim();
+  if (!trimmed.startsWith('세션초기화')) return false;
+  if (!deps.registeredGroups[chatJid]?.isMain) return false;
+
+  const targetInput = trimmed.slice('세션초기화'.length).trim();
+
+  if (targetInput === '전체') {
+    handleSessionResetAll(chatJid, deps).catch((err) =>
+      logger.error({ err, chatJid }, 'Session reset all error'),
+    );
+    return true;
+  }
+  if (targetInput) {
+    handleSessionReset(chatJid, targetInput, deps).catch((err) =>
+      logger.error({ err, chatJid }, 'Session reset error'),
+    );
+    return true;
+  }
+  return false;
 }

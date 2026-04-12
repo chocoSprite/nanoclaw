@@ -14,7 +14,7 @@ import {
   getRegisteredChannelNames,
 } from './channels/registry.js';
 import { startSessionCleanup } from './session-cleanup.js';
-import { handleSessionReset, handleSessionResetAll } from './session-reset.js';
+import { tryHandleSessionResetCommand } from './session-reset.js';
 import type { SessionResetDeps, SessionHandlerDeps } from './session-reset.js';
 import {
   ContainerOutput,
@@ -59,21 +59,24 @@ import {
 } from './router.js';
 import { ChannelType } from './text-styles.js';
 import {
-  handleRemoteControlCommand,
   restoreRemoteControl,
+  tryHandleRemoteControlCommand,
+  type RemoteControlCommandDeps,
 } from './remote-control.js';
 import {
-  isSenderAllowed,
   isTriggerAllowed,
   loadSenderAllowlist,
-  shouldDropMessage,
+  shouldDropBySenderAllowlist,
 } from './sender-allowlist.js';
 import {
   extractSessionCommand,
   handleSessionCommand,
   isSessionCommandAllowed,
 } from './session-commands.js';
-import { buildLabDashboard } from './lab-dashboard.js';
+import {
+  tryHandleLabDashboardCommand,
+  type LabDashboardCommandDeps,
+} from './lab-dashboard.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -495,7 +498,7 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // --- Session reset deps ---
+  // --- Command intercept deps (shared by all channels) ---
 
   const resetDeps: SessionResetDeps = {
     dataDir: DATA_DIR,
@@ -504,98 +507,46 @@ async function main(): Promise<void> {
     deleteSession,
   };
 
-  // Handle "랩대시보드" — respond with host-side status snapshot, no container
-  async function handleLabDashboard(chatJid: string): Promise<void> {
-    const channel = findChannel(channels, chatJid);
-    if (!channel) return;
-    const text = await buildLabDashboard({
-      registeredGroups: state.registeredGroups,
-      queueStatuses: queue.getStatuses(),
-      sessionCount: Object.keys(state.sessions).length,
-      activeContainerCount: queue.activeContainerCount,
-      timezone: TIMEZONE,
-    });
-    await channel.sendMessage(chatJid, text);
-  }
+  // Send text to whichever channel owns the JID. Used by command intercepts
+  // that emit raw platform-formatted text (no formatOutbound pass).
+  const sendRaw = async (chatJid: string, text: string): Promise<void> => {
+    const ch = findChannel(channels, chatJid);
+    if (!ch) return;
+    await ch.sendMessage(chatJid, text);
+  };
+
+  const labDashboardDeps: LabDashboardCommandDeps = {
+    registeredGroups: state.registeredGroups,
+    getQueueStatuses: () => queue.getStatuses(),
+    getSessionCount: () => Object.keys(state.sessions).length,
+    getActiveContainerCount: () => queue.activeContainerCount,
+    timezone: TIMEZONE,
+    sendMessage: sendRaw,
+  };
+
+  const sessionResetDeps: SessionHandlerDeps = {
+    ...resetDeps,
+    registeredGroups: state.registeredGroups,
+    sendMessage: sendRaw,
+  };
+
+  const remoteControlDeps: RemoteControlCommandDeps = {
+    registeredGroups: state.registeredGroups,
+    cwd: process.cwd(),
+    sendMessage: sendRaw,
+  };
 
   // Channel callbacks (shared by all channels)
   const channelOpts = {
     onMessage: (chatJid: string, msg: NewMessage) => {
-      // Lab dashboard — intercept before storage, main group only
-      const trimmed = msg.content.trim();
-      if (trimmed === '랩대시보드' && state.registeredGroups[chatJid]?.isMain) {
-        handleLabDashboard(chatJid).catch((err) =>
-          logger.error({ err, chatJid }, 'Lab dashboard error'),
-        );
+      // Command intercepts — return early, skip storage
+      if (tryHandleLabDashboardCommand(chatJid, msg, labDashboardDeps)) return;
+      if (tryHandleSessionResetCommand(chatJid, msg, sessionResetDeps)) return;
+      if (tryHandleRemoteControlCommand(chatJid, msg, remoteControlDeps))
         return;
-      }
-
-      // Session reset — intercept before storage, main group only
-      if (
-        (trimmed.startsWith('세션초기화 ') || trimmed === '세션초기화') &&
-        state.registeredGroups[chatJid]?.isMain
-      ) {
-        const ch = findChannel(channels, chatJid);
-        if (!ch) return;
-        const handlerDeps: SessionHandlerDeps = {
-          ...resetDeps,
-          registeredGroups: state.registeredGroups,
-          sendMessage: (jid, text) => ch.sendMessage(jid, text),
-        };
-        const targetInput = trimmed.slice('세션초기화'.length).trim();
-        if (targetInput === '전체') {
-          handleSessionResetAll(chatJid, handlerDeps).catch((err) =>
-            logger.error({ err, chatJid }, 'Session reset all error'),
-          );
-          return;
-        }
-        if (targetInput) {
-          handleSessionReset(chatJid, targetInput, handlerDeps).catch((err) =>
-            logger.error({ err, chatJid }, 'Session reset error'),
-          );
-          return;
-        }
-      }
-
-      // Remote control commands — intercept before storage
-      if (trimmed === '/remote-control' || trimmed === '/remote-control-end') {
-        const ch = findChannel(channels, chatJid);
-        if (!ch) return;
-        handleRemoteControlCommand(
-          trimmed as '/remote-control' | '/remote-control-end',
-          chatJid,
-          process.cwd(),
-          {
-            isMainGroup: state.registeredGroups[chatJid]?.isMain === true,
-            sender: msg.sender,
-            sendMessage: (text) => ch.sendMessage(chatJid, text),
-          },
-        ).catch((err) =>
-          logger.error({ err, chatJid }, 'Remote control command error'),
-        );
+      if (shouldDropBySenderAllowlist(chatJid, msg, state.registeredGroups))
         return;
-      }
 
-      // Sender allowlist drop mode: discard messages from denied senders before storing
-      if (
-        !msg.is_from_me &&
-        !msg.is_bot_message &&
-        state.registeredGroups[chatJid]
-      ) {
-        const cfg = loadSenderAllowlist();
-        if (
-          shouldDropMessage(chatJid, cfg) &&
-          !isSenderAllowed(chatJid, msg.sender, cfg)
-        ) {
-          if (cfg.logDenied) {
-            logger.debug(
-              { chatJid, sender: msg.sender },
-              'sender-allowlist: dropping message (drop mode)',
-            );
-          }
-          return;
-        }
-      }
       // Reset bot conversation counter when a human sends a message
       if (!msg.is_bot_message) {
         const ch = getPhysicalChannel(chatJid);

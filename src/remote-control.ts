@@ -4,6 +4,7 @@ import path from 'path';
 
 import { DATA_DIR } from './config.js';
 import { logger } from './logger.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 interface RemoteControlSession {
   pid: number;
@@ -239,6 +240,44 @@ export async function handleRemoteControlCommand(
       await deps.sendMessage(result.error);
     }
   }
+}
+
+export interface RemoteControlCommandDeps {
+  registeredGroups: Record<string, RegisteredGroup>;
+  cwd: string;
+  sendMessage: (chatJid: string, text: string) => Promise<void>;
+}
+
+/**
+ * Intercept "/remote-control" and "/remote-control-end" commands.
+ * Returns true if handled (caller should stop pipeline), false otherwise.
+ * isMain enforcement happens inside handleRemoteControlCommand (silently rejects non-main).
+ * Dispatch is fire-and-forget; errors are logged.
+ */
+export function tryHandleRemoteControlCommand(
+  chatJid: string,
+  msg: NewMessage,
+  deps: RemoteControlCommandDeps,
+): boolean {
+  const trimmed = msg.content.trim();
+  if (trimmed !== '/remote-control' && trimmed !== '/remote-control-end') {
+    return false;
+  }
+
+  handleRemoteControlCommand(
+    trimmed as '/remote-control' | '/remote-control-end',
+    chatJid,
+    deps.cwd,
+    {
+      isMainGroup: deps.registeredGroups[chatJid]?.isMain === true,
+      sender: msg.sender,
+      sendMessage: (text) => deps.sendMessage(chatJid, text),
+    },
+  ).catch((err) =>
+    logger.error({ err, chatJid }, 'Remote control command error'),
+  );
+
+  return true;
 }
 
 export function stopRemoteControl():

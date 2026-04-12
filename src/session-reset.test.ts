@@ -6,9 +6,13 @@ import {
   cleanSdkSessionFiles,
   findGroupByInput,
   resetGroupSession,
+  tryHandleSessionResetCommand,
 } from './session-reset.js';
-import type { SessionResetDeps } from './session-reset.js';
-import type { RegisteredGroup } from './types.js';
+import type {
+  SessionHandlerDeps,
+  SessionResetDeps,
+} from './session-reset.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 vi.mock('./logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -237,5 +241,110 @@ describe('findGroupByInput', () => {
   it('returns null for non-existent group', () => {
     const result = findGroupByInput('nonexistent', groups);
     expect(result).toBeNull();
+  });
+});
+
+describe('tryHandleSessionResetCommand', () => {
+  function makeMsg(content: string): NewMessage {
+    return {
+      id: 'm1',
+      chat_jid: 'main-jid',
+      sender: 'alice',
+      sender_name: 'Alice',
+      content,
+      timestamp: '2026-04-12T00:00:00Z',
+    };
+  }
+
+  function makeDeps(tmpDir: string): SessionHandlerDeps {
+    return {
+      dataDir: tmpDir,
+      sessions: {},
+      terminateGroup: vi.fn().mockResolvedValue(undefined),
+      deleteSession: vi.fn(),
+      registeredGroups: {
+        'main-jid': {
+          name: '패트',
+          folder: 'slack_pat_main',
+          trigger: '@패트',
+          added_at: '2026-01-01',
+          isMain: true,
+          sdk: 'codex',
+        },
+        'target-jid': {
+          name: '매트',
+          folder: 'slack_mat_news',
+          trigger: '@매트',
+          added_at: '2026-01-01',
+          sdk: 'codex',
+        },
+      },
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns false when content does not start with 세션초기화', () => {
+    expect(
+      tryHandleSessionResetCommand(
+        'main-jid',
+        makeMsg('hello'),
+        makeDeps(tmpDir),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false on non-main group', () => {
+    expect(
+      tryHandleSessionResetCommand(
+        'target-jid',
+        makeMsg('세션초기화 slack_mat_news'),
+        makeDeps(tmpDir),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false for bare 세션초기화 with no target', () => {
+    expect(
+      tryHandleSessionResetCommand(
+        'main-jid',
+        makeMsg('세션초기화'),
+        makeDeps(tmpDir),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns true and dispatches for 세션초기화 전체', async () => {
+    const deps = makeDeps(tmpDir);
+    expect(
+      tryHandleSessionResetCommand('main-jid', makeMsg('세션초기화 전체'), deps),
+    ).toBe(true);
+
+    // Wait for fire-and-forget
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(deps.sendMessage).toHaveBeenCalled();
+    expect(deps.terminateGroup).toHaveBeenCalled();
+  });
+
+  it('returns true and dispatches for 세션초기화 <target>', async () => {
+    const deps = makeDeps(tmpDir);
+    expect(
+      tryHandleSessionResetCommand(
+        'main-jid',
+        makeMsg('세션초기화 mat_news'),
+        deps,
+      ),
+    ).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(deps.sendMessage).toHaveBeenCalled();
+    expect(deps.terminateGroup).toHaveBeenCalledWith('target-jid');
   });
 });

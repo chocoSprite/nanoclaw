@@ -1,7 +1,13 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const MOCK_ALLOWLIST_PATH = '/tmp/nanoclaw-allowlist-test-default.json';
+
+vi.mock('./config.js', () => ({
+  SENDER_ALLOWLIST_PATH: '/tmp/nanoclaw-allowlist-test-default.json',
+}));
 
 import {
   _clearAllowlistCache,
@@ -9,8 +15,10 @@ import {
   isTriggerAllowed,
   loadSenderAllowlist,
   SenderAllowlistConfig,
+  shouldDropBySenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 let tmpDir: string;
 
@@ -233,5 +241,105 @@ describe('isTriggerAllowed', () => {
     };
     isTriggerAllowed('g1', 'eve', cfg);
     // Logger.debug is called — we just verify no crash; logger is a real pino instance
+  });
+});
+
+describe('shouldDropBySenderAllowlist', () => {
+  function makeMsg(overrides: Partial<NewMessage> = {}): NewMessage {
+    return {
+      id: 'm1',
+      chat_jid: 'g1',
+      sender: 'eve',
+      sender_name: 'Eve',
+      content: 'hi',
+      timestamp: '2026-04-12T00:00:00Z',
+      ...overrides,
+    };
+  }
+
+  function makeGroup(): RegisteredGroup {
+    return {
+      name: 'Test',
+      folder: 'slack_test',
+      trigger: '@test',
+      added_at: '2026-01-01',
+      sdk: 'codex',
+    };
+  }
+
+  const registered = { g1: makeGroup() };
+
+  beforeEach(() => {
+    _clearAllowlistCache();
+  });
+
+  afterEach(() => {
+    try {
+      fs.unlinkSync(MOCK_ALLOWLIST_PATH);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('returns false for is_from_me messages (no config read)', () => {
+    expect(
+      shouldDropBySenderAllowlist('g1', makeMsg({ is_from_me: true }), registered),
+    ).toBe(false);
+  });
+
+  it('returns false for is_bot_message (no config read)', () => {
+    expect(
+      shouldDropBySenderAllowlist(
+        'g1',
+        makeMsg({ is_bot_message: true }),
+        registered,
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false for unregistered chatJid', () => {
+    expect(shouldDropBySenderAllowlist('unknown', makeMsg(), registered)).toBe(
+      false,
+    );
+  });
+
+  it('returns false in trigger mode (not drop mode)', () => {
+    fs.writeFileSync(
+      MOCK_ALLOWLIST_PATH,
+      JSON.stringify({
+        default: { allow: ['alice'], mode: 'trigger' },
+        chats: {},
+        logDenied: false,
+      }),
+    );
+    expect(shouldDropBySenderAllowlist('g1', makeMsg(), registered)).toBe(false);
+  });
+
+  it('returns true in drop mode when sender not in allowlist', () => {
+    fs.writeFileSync(
+      MOCK_ALLOWLIST_PATH,
+      JSON.stringify({
+        default: { allow: ['alice'], mode: 'drop' },
+        chats: {},
+        logDenied: false,
+      }),
+    );
+    expect(
+      shouldDropBySenderAllowlist('g1', makeMsg({ sender: 'eve' }), registered),
+    ).toBe(true);
+  });
+
+  it('returns false in drop mode when sender is allowed', () => {
+    fs.writeFileSync(
+      MOCK_ALLOWLIST_PATH,
+      JSON.stringify({
+        default: { allow: ['alice'], mode: 'drop' },
+        chats: {},
+        logDenied: false,
+      }),
+    );
+    expect(
+      shouldDropBySenderAllowlist('g1', makeMsg({ sender: 'alice' }), registered),
+    ).toBe(false);
   });
 });

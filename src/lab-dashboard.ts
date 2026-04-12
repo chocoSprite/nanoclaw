@@ -1,6 +1,7 @@
 import { getCodexUsageSummary } from './codex-usage.js';
 import { getAllTasks } from './db.js';
-import type { RegisteredGroup } from './types.js';
+import { logger } from './logger.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 export interface QueueStatus {
   jid: string;
@@ -138,4 +139,40 @@ export async function buildLabDashboard(
   }
 
   return lines.join('\n');
+}
+
+export interface LabDashboardCommandDeps {
+  registeredGroups: Record<string, RegisteredGroup>;
+  getQueueStatuses: () => QueueStatus[];
+  getSessionCount: () => number;
+  getActiveContainerCount: () => number;
+  timezone: string;
+  sendMessage: (chatJid: string, text: string) => Promise<void>;
+}
+
+/**
+ * Intercept the "랩대시보드" command on the main group.
+ * Returns true if handled (caller should stop pipeline), false otherwise.
+ * Dispatch is fire-and-forget; errors are logged.
+ */
+export function tryHandleLabDashboardCommand(
+  chatJid: string,
+  msg: NewMessage,
+  deps: LabDashboardCommandDeps,
+): boolean {
+  if (msg.content.trim() !== '랩대시보드') return false;
+  if (!deps.registeredGroups[chatJid]?.isMain) return false;
+
+  (async () => {
+    const text = await buildLabDashboard({
+      registeredGroups: deps.registeredGroups,
+      queueStatuses: deps.getQueueStatuses(),
+      sessionCount: deps.getSessionCount(),
+      activeContainerCount: deps.getActiveContainerCount(),
+      timezone: deps.timezone,
+    });
+    await deps.sendMessage(chatJid, text);
+  })().catch((err) => logger.error({ err, chatJid }, 'Lab dashboard error'));
+
+  return true;
 }

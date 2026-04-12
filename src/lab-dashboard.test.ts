@@ -17,9 +17,16 @@ vi.mock('./codex-usage.js', () => ({
     mockGetCodexUsageSummary(...args),
 }));
 
-import { buildLabDashboard } from './lab-dashboard.js';
-import type { LabDashboardDeps, QueueStatus } from './lab-dashboard.js';
-import type { RegisteredGroup } from './types.js';
+import {
+  buildLabDashboard,
+  tryHandleLabDashboardCommand,
+} from './lab-dashboard.js';
+import type {
+  LabDashboardCommandDeps,
+  LabDashboardDeps,
+  QueueStatus,
+} from './lab-dashboard.js';
+import type { NewMessage, RegisteredGroup } from './types.js';
 
 function makeDeps(overrides: Partial<LabDashboardDeps> = {}): LabDashboardDeps {
   return {
@@ -162,5 +169,96 @@ describe('buildLabDashboard', () => {
     expect(text).toContain('[slack_news]');
     // Paused task should not appear in upcoming
     expect(text).not.toContain('[slack_report]');
+  });
+});
+
+function makeMsg(overrides: Partial<NewMessage> = {}): NewMessage {
+  return {
+    id: 'm1',
+    chat_jid: 'main-jid',
+    sender: 'alice',
+    sender_name: 'Alice',
+    content: '',
+    timestamp: '2026-04-12T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function makeCommandDeps(
+  overrides: Partial<LabDashboardCommandDeps> = {},
+): LabDashboardCommandDeps {
+  return {
+    registeredGroups: {
+      'main-jid': makeGroup({ isMain: true }),
+      'other-jid': makeGroup(),
+    },
+    getQueueStatuses: () => [],
+    getSessionCount: () => 0,
+    getActiveContainerCount: () => 0,
+    timezone: 'Asia/Seoul',
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+describe('tryHandleLabDashboardCommand', () => {
+  it('returns false for non-matching content', () => {
+    expect(
+      tryHandleLabDashboardCommand(
+        'main-jid',
+        makeMsg({ content: 'hello' }),
+        makeCommandDeps(),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false on non-main group', () => {
+    expect(
+      tryHandleLabDashboardCommand(
+        'other-jid',
+        makeMsg({ content: '랩대시보드' }),
+        makeCommandDeps(),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false when chatJid is unregistered', () => {
+    expect(
+      tryHandleLabDashboardCommand(
+        'unknown-jid',
+        makeMsg({ content: '랩대시보드' }),
+        makeCommandDeps(),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns true and dispatches on main group', async () => {
+    const sendMessage = vi.fn().mockResolvedValue(undefined);
+    const deps = makeCommandDeps({ sendMessage });
+
+    expect(
+      tryHandleLabDashboardCommand(
+        'main-jid',
+        makeMsg({ content: '랩대시보드' }),
+        deps,
+      ),
+    ).toBe(true);
+
+    // Wait for fire-and-forget
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sendMessage).toHaveBeenCalledWith(
+      'main-jid',
+      expect.stringContaining('랩 대시보드'),
+    );
+  });
+
+  it('trims whitespace before matching', () => {
+    expect(
+      tryHandleLabDashboardCommand(
+        'main-jid',
+        makeMsg({ content: '  랩대시보드  ' }),
+        makeCommandDeps(),
+      ),
+    ).toBe(true);
   });
 });
