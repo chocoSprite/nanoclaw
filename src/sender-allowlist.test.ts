@@ -250,7 +250,9 @@ describe('isTriggerAllowed', () => {
 });
 
 describe('hasAllowedTrigger', () => {
-  function makeGroup(overrides: Partial<RegisteredGroup> = {}): RegisteredGroup {
+  function makeGroup(
+    overrides: Partial<RegisteredGroup> = {},
+  ): RegisteredGroup {
     return {
       name: 'Test',
       folder: 'slack_test',
@@ -322,9 +324,9 @@ describe('hasAllowedTrigger', () => {
       }),
     );
     const group = makeGroup();
-    expect(
-      hasAllowedTrigger(group, [makeMsg({ sender: 'eve' })], 'g1'),
-    ).toBe(false);
+    expect(hasAllowedTrigger(group, [makeMsg({ sender: 'eve' })], 'g1')).toBe(
+      false,
+    );
   });
 
   it('bypasses allowlist for is_from_me messages', () => {
