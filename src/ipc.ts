@@ -153,6 +153,19 @@ export function startIpcWatcher(deps: IpcDeps): void {
   logger.info('IPC watcher started (per-group namespaces)');
 }
 
+/**
+ * Authorization: main group, or the task's owning group.
+ * Type predicate narrows out null/undefined for callers.
+ */
+function canMutateTask(
+  task: { group_folder: string } | undefined | null,
+  sourceGroup: string,
+  isMain: boolean,
+): task is { group_folder: string } {
+  if (!task) return false;
+  return isMain || task.group_folder === sourceGroup;
+}
+
 export async function processTaskIpc(
   data: {
     type: string;
@@ -254,7 +267,7 @@ export async function processTaskIpc(
     case 'pause_task':
       if (data.taskId) {
         const task = getTaskById(data.taskId);
-        if (task && (isMain || task.group_folder === sourceGroup)) {
+        if (canMutateTask(task, sourceGroup, isMain)) {
           updateTask(data.taskId, { status: 'paused' });
           logger.info(
             { taskId: data.taskId, sourceGroup },
@@ -273,7 +286,7 @@ export async function processTaskIpc(
     case 'resume_task':
       if (data.taskId) {
         const task = getTaskById(data.taskId);
-        if (task && (isMain || task.group_folder === sourceGroup)) {
+        if (canMutateTask(task, sourceGroup, isMain)) {
           updateTask(data.taskId, { status: 'active' });
           logger.info(
             { taskId: data.taskId, sourceGroup },
@@ -292,7 +305,7 @@ export async function processTaskIpc(
     case 'cancel_task':
       if (data.taskId) {
         const task = getTaskById(data.taskId);
-        if (task && (isMain || task.group_folder === sourceGroup)) {
+        if (canMutateTask(task, sourceGroup, isMain)) {
           deleteTask(data.taskId);
           logger.info(
             { taskId: data.taskId, sourceGroup },
@@ -318,7 +331,7 @@ export async function processTaskIpc(
           );
           break;
         }
-        if (!isMain && task.group_folder !== sourceGroup) {
+        if (!canMutateTask(task, sourceGroup, isMain)) {
           logger.warn(
             { taskId: data.taskId, sourceGroup },
             'Unauthorized task update attempt',
