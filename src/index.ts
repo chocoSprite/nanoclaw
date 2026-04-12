@@ -1,17 +1,10 @@
-import fs from 'fs';
-import path from 'path';
-
-import { OneCLI } from '@onecli-sh/sdk';
-
 import {
   ASSISTANT_NAME,
   DATA_DIR,
   DEFAULT_TRIGGER,
   getTriggerPattern,
-  GROUPS_DIR,
   IDLE_TIMEOUT,
   MAX_MESSAGES_PER_PROMPT,
-  ONECLI_URL,
   POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
@@ -35,24 +28,28 @@ import {
   ensureContainerRuntimeRunning,
 } from './container-runtime.js';
 import {
-  getAllChats,
-  getAllRegisteredGroups,
-  getAllSessions,
   getAllTasks,
   deleteSession,
-  getLastBotMessageTimestamp,
   getMessageById,
   getMessagesSince,
-  getRouterState,
   initDatabase,
-  setRegisteredGroup,
-  setRouterState,
   setSession,
   storeChatMetadata,
   storeMessage,
 } from './db.js';
+import {
+  ensureOneCLIAgent,
+  getAvailableGroups,
+  getCursor,
+  getOrRecoverCursor,
+  getPhysicalChannel,
+  loadGroupState,
+  registerGroup,
+  rollbackCursor,
+  setCursor,
+  state,
+} from './group-state.js';
 import { GroupQueue } from './group-queue.js';
-import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
 import {
   findChannel,
@@ -84,174 +81,20 @@ import { logger } from './logger.js';
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
 
-let sessions: Record<string, string> = {};
-let registeredGroups: Record<string, RegisteredGroup> = {};
-let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
 // Bot-to-bot conversation guard: prevent infinite loops.
-// Tracks consecutive bot-triggered rounds per physical channel.
-// Resets when a human message arrives.
 const MAX_BOT_ROUNDS = 3;
-const botConversationCount: Record<string, number> = {};
-// Track the thread_ts of the most recent triggering message per chat.
-// When the agent responds, it replies in the same thread.
-const pendingThreadTs: Record<string, string> = {};
-
-function getPhysicalChannel(jid: string): string {
-  return jid.replace(/^[^:]+:/, '');
-}
-
-const onecli = new OneCLI({ url: ONECLI_URL });
-
-function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
-  if (group.isMain) return;
-  const identifier = group.folder.toLowerCase().replace(/_/g, '-');
-  onecli.ensureAgent({ name: group.name, identifier }).then(
-    (res) => {
-      logger.info(
-        { jid, identifier, created: res.created },
-        'OneCLI agent ensured',
-      );
-    },
-    (err) => {
-      logger.debug(
-        { jid, identifier, err: String(err) },
-        'OneCLI agent ensure skipped',
-      );
-    },
-  );
-}
-
-function loadState(): void {
-  const agentTs = getRouterState('last_agent_timestamp');
-  try {
-    lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
-  } catch {
-    logger.warn('Corrupted last_agent_timestamp in DB, resetting');
-    lastAgentTimestamp = {};
-  }
-  sessions = getAllSessions();
-  registeredGroups = getAllRegisteredGroups();
-  logger.info(
-    { groupCount: Object.keys(registeredGroups).length },
-    'State loaded',
-  );
-}
-
-/**
- * Return the message cursor for a group, recovering from the last bot reply
- * if lastAgentTimestamp is missing (new group, corrupted state, restart).
- */
-function getOrRecoverCursor(chatJid: string): string {
-  const existing = lastAgentTimestamp[chatJid];
-  if (existing) return existing;
-
-  const botTs = getLastBotMessageTimestamp(chatJid, ASSISTANT_NAME);
-  if (botTs) {
-    logger.info(
-      { chatJid, recoveredFrom: botTs },
-      'Recovered message cursor from last bot reply',
-    );
-    lastAgentTimestamp[chatJid] = botTs;
-    saveState();
-    return botTs;
-  }
-  return '';
-}
-
-function saveState(): void {
-  setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
-}
-
-function registerGroup(jid: string, group: RegisteredGroup): void {
-  let groupDir: string;
-  try {
-    groupDir = resolveGroupFolderPath(group.folder);
-  } catch (err) {
-    logger.warn(
-      { jid, folder: group.folder, err },
-      'Rejecting group registration with invalid folder',
-    );
-    return;
-  }
-
-  registeredGroups[jid] = group;
-  setRegisteredGroup(jid, group);
-
-  // Create group folder
-  fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
-
-  // Copy CLAUDE.md template into the new group folder so agents have
-  // identity and instructions from the first run.  (Fixes #1391)
-  const groupMdFile = path.join(groupDir, 'CLAUDE.md');
-  if (!fs.existsSync(groupMdFile)) {
-    const templateFile = path.join(
-      GROUPS_DIR,
-      group.isMain ? 'main' : 'global',
-      'CLAUDE.md',
-    );
-    if (fs.existsSync(templateFile)) {
-      let content = fs.readFileSync(templateFile, 'utf-8');
-      if (ASSISTANT_NAME !== 'Andy') {
-        content = content.replace(/^# Andy$/m, `# ${ASSISTANT_NAME}`);
-        content = content.replace(/You are Andy/g, `You are ${ASSISTANT_NAME}`);
-      }
-      fs.writeFileSync(groupMdFile, content);
-      logger.info({ folder: group.folder }, 'Created CLAUDE.md from template');
-    }
-  }
-
-  // Ensure a corresponding OneCLI agent exists (best-effort, non-blocking)
-  ensureOneCLIAgent(jid, group);
-
-  // Update groups snapshot for all groups (new group is now visible)
-  const availGroups = getAvailableGroups();
-  const rjids = new Set(Object.keys(registeredGroups));
-  for (const g of Object.values(registeredGroups)) {
-    writeGroupsSnapshot(g.folder, g.isMain === true, availGroups, rjids);
-  }
-
-  logger.info(
-    { jid, name: group.name, folder: group.folder },
-    'Group registered',
-  );
-}
-
-/**
- * Get available groups list for the agent.
- * Returns groups ordered by most recent activity.
- */
-export function getAvailableGroups(): import('./container-runner.js').AvailableGroup[] {
-  const chats = getAllChats();
-  const registeredJids = new Set(Object.keys(registeredGroups));
-
-  return chats
-    .filter((c) => c.is_group)
-    .map((c) => ({
-      jid: c.jid,
-      name: c.name,
-      lastActivity: c.last_message_time,
-      isRegistered: registeredJids.has(c.jid),
-    }));
-}
-
-/** @internal - exported for testing */
-export function _setRegisteredGroups(
-  groups: Record<string, RegisteredGroup>,
-): void {
-  registeredGroups = groups;
-}
 
 /**
  * Process all pending messages for a group.
  * Called by the GroupQueue when it's this group's turn.
  */
 async function processGroupMessages(chatJid: string): Promise<boolean> {
-  const group = registeredGroups[chatJid];
+  const group = state.registeredGroups[chatJid];
   if (!group) return true;
 
   const channel = findChannel(channels, chatJid);
@@ -279,18 +122,16 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const hasPeerBotMessages = missedMessages.some((m) => m.is_bot_message);
 
   if (hasHumanMessages) {
-    delete botConversationCount[ch];
+    delete state.botConversationCount[ch];
   } else if (hasPeerBotMessages) {
-    botConversationCount[ch] = (botConversationCount[ch] || 0) + 1;
-    if (botConversationCount[ch] > MAX_BOT_ROUNDS) {
+    state.botConversationCount[ch] = (state.botConversationCount[ch] || 0) + 1;
+    if (state.botConversationCount[ch] > MAX_BOT_ROUNDS) {
       logger.info(
-        { group: group.name, rounds: botConversationCount[ch] },
+        { group: group.name, rounds: state.botConversationCount[ch] },
         'Bot conversation limit reached, pausing until user intervention',
       );
       // Advance cursor so we don't re-process these messages
-      lastAgentTimestamp[chatJid] =
-        missedMessages[missedMessages.length - 1].timestamp;
-      saveState();
+      setCursor(chatJid, missedMessages[missedMessages.length - 1].timestamp);
       await channel.sendMessage(
         chatJid,
         `[대화 ${MAX_BOT_ROUNDS}라운드 완료 — 사용자 입력을 기다립니다]`,
@@ -316,10 +157,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
             runAgent: (prompt, onOutput) =>
               runAgent(group, prompt, chatJid, onOutput),
             closeStdin: () => queue.closeStdin(chatJid),
-            advanceCursor: (ts) => {
-              lastAgentTimestamp[chatJid] = ts;
-              saveState();
-            },
+            advanceCursor: (ts) => setCursor(chatJid, ts),
             formatMessages,
             canSenderInteract: (msg) => {
               const hasTrigger = getTriggerPattern(group.trigger).test(
@@ -363,10 +201,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
-  const previousCursor = lastAgentTimestamp[chatJid] || '';
-  lastAgentTimestamp[chatJid] =
-    missedMessages[missedMessages.length - 1].timestamp;
-  saveState();
+  const previousCursor = getCursor(chatJid);
+  setCursor(chatJid, missedMessages[missedMessages.length - 1].timestamp);
 
   logger.info(
     { group: group.name, messageCount: missedMessages.length },
@@ -401,7 +237,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = stripInternalTags(raw);
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
-        const threadTs = pendingThreadTs[chatJid];
+        const threadTs = state.pendingThreadTs[chatJid];
         await channel.sendMessage(
           chatJid,
           text,
@@ -436,8 +272,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       return true;
     }
     // Roll back cursor so retries can re-process these messages
-    lastAgentTimestamp[chatJid] = previousCursor;
-    saveState();
+    rollbackCursor(chatJid, previousCursor);
     logger.warn(
       { group: group.name },
       'Agent error, rolled back message cursor for retry',
@@ -455,13 +290,13 @@ async function runAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
-  const sessionId = sessions[group.folder];
+  const sessionId = state.sessions[group.folder];
 
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
         if (output.newSessionId) {
-          sessions[group.folder] = output.newSessionId;
+          state.sessions[group.folder] = output.newSessionId;
           setSession(group.folder, output.newSessionId);
         }
         await onOutput(output);
@@ -487,7 +322,7 @@ async function runAgent(
     );
 
     if (output.newSessionId) {
-      sessions[group.folder] = output.newSessionId;
+      state.sessions[group.folder] = output.newSessionId;
       setSession(group.folder, output.newSessionId);
     }
 
@@ -503,7 +338,7 @@ async function runAgent(
         { group: group.name, sessionId },
         'Stale session detected, clearing',
       );
-      delete sessions[group.folder];
+      delete state.sessions[group.folder];
       deleteSession(group.folder);
     }
 
@@ -533,10 +368,10 @@ async function startMessageLoop(): Promise<void> {
 
   while (true) {
     try {
-      const jids = Object.keys(registeredGroups);
+      const jids = Object.keys(state.registeredGroups);
 
       for (const chatJid of jids) {
-        const group = registeredGroups[chatJid];
+        const group = state.registeredGroups[chatJid];
         if (!group) continue;
 
         const pending = getMessagesSince(
@@ -591,8 +426,7 @@ async function startMessageLoop(): Promise<void> {
         // --- End session command interception ---
 
         if (queue.sendMessage(chatJid, formatted)) {
-          lastAgentTimestamp[chatJid] = pending[pending.length - 1].timestamp;
-          saveState();
+          setCursor(chatJid, pending[pending.length - 1].timestamp);
           channel
             .setTyping?.(chatJid, true)
             ?.catch((err) =>
@@ -615,7 +449,7 @@ async function startMessageLoop(): Promise<void> {
  * Handles crash between advancing lastTimestamp and processing messages.
  */
 function recoverPendingMessages(): void {
-  for (const [chatJid, group] of Object.entries(registeredGroups)) {
+  for (const [chatJid, group] of Object.entries(state.registeredGroups)) {
     const pending = getMessagesSince(
       chatJid,
       getOrRecoverCursor(chatJid),
@@ -641,11 +475,11 @@ async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
-  loadState();
+  loadGroupState();
 
   // Ensure OneCLI agents exist for all registered groups.
   // Recovers from missed creates (e.g. OneCLI was down at registration time).
-  for (const [jid, group] of Object.entries(registeredGroups)) {
+  for (const [jid, group] of Object.entries(state.registeredGroups)) {
     ensureOneCLIAgent(jid, group);
   }
 
@@ -665,7 +499,7 @@ async function main(): Promise<void> {
 
   const resetDeps: SessionResetDeps = {
     dataDir: DATA_DIR,
-    sessions,
+    sessions: state.sessions,
     terminateGroup: (jid) => queue.terminateGroup(jid),
     deleteSession,
   };
@@ -675,9 +509,9 @@ async function main(): Promise<void> {
     const channel = findChannel(channels, chatJid);
     if (!channel) return;
     const text = await buildLabDashboard({
-      registeredGroups,
+      registeredGroups: state.registeredGroups,
       queueStatuses: queue.getStatuses(),
-      sessionCount: Object.keys(sessions).length,
+      sessionCount: Object.keys(state.sessions).length,
       activeContainerCount: queue.activeContainerCount,
       timezone: TIMEZONE,
     });
@@ -689,7 +523,7 @@ async function main(): Promise<void> {
     onMessage: (chatJid: string, msg: NewMessage) => {
       // Lab dashboard — intercept before storage, main group only
       const trimmed = msg.content.trim();
-      if (trimmed === '랩대시보드' && registeredGroups[chatJid]?.isMain) {
+      if (trimmed === '랩대시보드' && state.registeredGroups[chatJid]?.isMain) {
         handleLabDashboard(chatJid).catch((err) =>
           logger.error({ err, chatJid }, 'Lab dashboard error'),
         );
@@ -699,13 +533,13 @@ async function main(): Promise<void> {
       // Session reset — intercept before storage, main group only
       if (
         (trimmed.startsWith('세션초기화 ') || trimmed === '세션초기화') &&
-        registeredGroups[chatJid]?.isMain
+        state.registeredGroups[chatJid]?.isMain
       ) {
         const ch = findChannel(channels, chatJid);
         if (!ch) return;
         const handlerDeps: SessionHandlerDeps = {
           ...resetDeps,
-          registeredGroups,
+          registeredGroups: state.registeredGroups,
           sendMessage: (jid, text) => ch.sendMessage(jid, text),
         };
         const targetInput = trimmed.slice('세션초기화'.length).trim();
@@ -732,7 +566,7 @@ async function main(): Promise<void> {
           chatJid,
           process.cwd(),
           {
-            isMainGroup: registeredGroups[chatJid]?.isMain === true,
+            isMainGroup: state.registeredGroups[chatJid]?.isMain === true,
             sender: msg.sender,
             sendMessage: (text) => ch.sendMessage(chatJid, text),
           },
@@ -743,7 +577,7 @@ async function main(): Promise<void> {
       }
 
       // Sender allowlist drop mode: discard messages from denied senders before storing
-      if (!msg.is_from_me && !msg.is_bot_message && registeredGroups[chatJid]) {
+      if (!msg.is_from_me && !msg.is_bot_message && state.registeredGroups[chatJid]) {
         const cfg = loadSenderAllowlist();
         if (
           shouldDropMessage(chatJid, cfg) &&
@@ -761,7 +595,7 @@ async function main(): Promise<void> {
       // Reset bot conversation counter when a human sends a message
       if (!msg.is_bot_message) {
         const ch = getPhysicalChannel(chatJid);
-        delete botConversationCount[ch];
+        delete state.botConversationCount[ch];
       }
       storeMessage(msg);
 
@@ -772,9 +606,9 @@ async function main(): Promise<void> {
           msg.reply_to_sender_name = parent.sender_name;
           msg.reply_to_content = parent.content.slice(0, 300);
         }
-        pendingThreadTs[msg.chat_jid] = msg.thread_id;
+        state.pendingThreadTs[msg.chat_jid] = msg.thread_id;
       } else {
-        delete pendingThreadTs[msg.chat_jid];
+        delete state.pendingThreadTs[msg.chat_jid];
       }
     },
     onChatMetadata: (
@@ -784,7 +618,7 @@ async function main(): Promise<void> {
       channel?: string,
       isGroup?: boolean,
     ) => storeChatMetadata(chatJid, timestamp, name, channel, isGroup),
-    registeredGroups: () => registeredGroups,
+    registeredGroups: () => state.registeredGroups,
   };
 
   // Create and connect all registered channels.
@@ -811,8 +645,8 @@ async function main(): Promise<void> {
   // Start subsystems (independently of connection handler)
   startSessionCleanup();
   startSchedulerLoop({
-    registeredGroups: () => registeredGroups,
-    getSessions: () => sessions,
+    registeredGroups: () => state.registeredGroups,
+    getSessions: () => state.sessions,
     queue,
     onProcess: (groupJid, proc, containerName, groupFolder) =>
       queue.registerProcess(groupJid, proc, containerName, groupFolder),
@@ -834,7 +668,7 @@ async function main(): Promise<void> {
       if (!text) return Promise.resolve();
       return channel.sendMessage(jid, text);
     },
-    registeredGroups: () => registeredGroups,
+    registeredGroups: () => state.registeredGroups,
     registerGroup,
     syncGroups: async (force: boolean) => {
       await Promise.all(
@@ -847,17 +681,17 @@ async function main(): Promise<void> {
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
     onTasksChanged: () => {
-      writeAllTasksSnapshots(registeredGroups, getAllTasks());
+      writeAllTasksSnapshots(state.registeredGroups, getAllTasks());
     },
   });
   queue.setProcessMessagesFn(processGroupMessages);
 
   // Write initial snapshots so containers can read tasks/groups from startup
-  writeAllTasksSnapshots(registeredGroups, getAllTasks());
+  writeAllTasksSnapshots(state.registeredGroups, getAllTasks());
   {
     const initAvailableGroups = getAvailableGroups();
-    const initRegisteredJids = new Set(Object.keys(registeredGroups));
-    for (const group of Object.values(registeredGroups)) {
+    const initRegisteredJids = new Set(Object.keys(state.registeredGroups));
+    for (const group of Object.values(state.registeredGroups)) {
       writeGroupsSnapshot(
         group.folder,
         group.isMain === true,
