@@ -10,6 +10,7 @@ import type {
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { DATA_DIR } from '../config.js';
+import { translateContainerPath } from '../container-path-translator.js';
 import { updateChatName } from '../db.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
@@ -343,7 +344,10 @@ export class SlackChannel implements Channel {
     const mentionTranslated = this.translateOutboundMentions(text);
 
     // Extract files (images + general) from agent output
-    const { cleanText, filePaths } = this.extractFilePaths(mentionTranslated);
+    const { cleanText, filePaths } = this.extractFilePaths(
+      mentionTranslated,
+      jid,
+    );
     const messageText = cleanText || (filePaths.length > 0 ? undefined : text);
 
     try {
@@ -658,34 +662,61 @@ export class SlackChannel implements Channel {
   }
 
   /**
-   * Extract image paths from agent output text.
-   * Parses [Image: /path] tags and markdown image links.
+   * Extract image/file paths from agent output text.
+   * Parses [Image: /path] tags, [File: /path] tags, and markdown image links.
+   *
+   * Agents see container paths (`/workspace/group/...`) and emit them in
+   * tags. We translate to host paths before the existence check so the
+   * upload step can read the file.
    */
-  private extractFilePaths(text: string): {
+  private extractFilePaths(
+    text: string,
+    jid: string,
+  ): {
     cleanText: string;
     filePaths: string[];
   } {
     const filePaths: string[] = [];
+    const group = this.opts.registeredGroups()[jid];
+
+    const resolveHostPath = (p: string): string | null => {
+      const trimmed = p.trim();
+      // Try translated (container → host) first; fall back to as-is so
+      // agents that already emit host paths (e.g. from a mounted extra
+      // directory whose host path they happen to know) still work.
+      if (group) {
+        const translated = translateContainerPath(trimmed, group);
+        if (translated && fs.existsSync(translated)) return translated;
+      }
+      if (fs.existsSync(trimmed)) return trimmed;
+      logger.warn(
+        { jid, path: trimmed, group: group?.folder },
+        'Attachment tag references path that does not exist on host',
+      );
+      return null;
+    };
 
     // Extract [Image: /path] tags
     let cleaned = text.replace(IMAGE_TAG_RE, (_, imgPath: string) => {
-      const p = imgPath.trim();
-      if (fs.existsSync(p)) filePaths.push(p);
+      const resolved = resolveHostPath(imgPath);
+      if (resolved) filePaths.push(resolved);
       return '';
     });
 
     // Extract [File: /path] tags
     cleaned = cleaned.replace(FILE_TAG_RE, (_, filePath: string) => {
-      const p = filePath.trim();
-      if (fs.existsSync(p)) filePaths.push(p);
+      const resolved = resolveHostPath(filePath);
+      if (resolved) filePaths.push(resolved);
       return '';
     });
 
     // Extract markdown image links pointing to local files
     cleaned = cleaned.replace(MD_IMAGE_LINK_RE, (match, linkPath: string) => {
-      const p = linkPath.trim();
-      if (IMAGE_EXTS.test(p) && fs.existsSync(p)) {
-        filePaths.push(p);
+      const trimmed = linkPath.trim();
+      if (!IMAGE_EXTS.test(trimmed)) return match;
+      const resolved = resolveHostPath(trimmed);
+      if (resolved) {
+        filePaths.push(resolved);
         return '';
       }
       return match;
