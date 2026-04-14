@@ -83,6 +83,10 @@ async function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
+  // Point git at the host-sourced gitconfig mounted in container-mounts.ts.
+  // Harmless if the file doesn't exist — git silently falls back to defaults.
+  args.push('-e', 'GIT_CONFIG_GLOBAL=/etc/nanoclaw-git/.gitconfig');
+
   await applyCredentialArgs(args, containerName, agentIdentifier, sdk);
 
   // Runtime-specific args for host gateway resolution

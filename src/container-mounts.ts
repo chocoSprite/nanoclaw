@@ -290,6 +290,23 @@ export function buildVolumeMounts(
     readonly: true,
   });
 
+  // Mirror the host user's ~/.gitconfig so in-container commits carry the
+  // real GitHub identity (needed for Vercel attribution on projects that
+  // agents push). Apple Container (VirtioFS) doesn't support file mounts,
+  // so we stage a copy in data/gitconfig/ and mount the directory. Git
+  // reads it via GIT_CONFIG_GLOBAL (set in container-runner.ts).
+  const hostGitconfig = path.join(os.homedir(), '.gitconfig');
+  if (fs.existsSync(hostGitconfig)) {
+    const gitconfigDir = path.join(DATA_DIR, 'gitconfig');
+    fs.mkdirSync(gitconfigDir, { recursive: true });
+    fs.copyFileSync(hostGitconfig, path.join(gitconfigDir, '.gitconfig'));
+    mounts.push({
+      hostPath: gitconfigDir,
+      containerPath: '/etc/nanoclaw-git',
+      readonly: true,
+    });
+  }
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(
