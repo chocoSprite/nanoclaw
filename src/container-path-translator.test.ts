@@ -6,9 +6,7 @@ import { DATA_DIR, GROUPS_DIR, STORE_DIR } from './config.js';
 import { translateContainerPath } from './container-path-translator.js';
 import type { RegisteredGroup } from './types.js';
 
-function makeGroup(
-  overrides: Partial<RegisteredGroup> = {},
-): RegisteredGroup {
+function makeGroup(overrides: Partial<RegisteredGroup> = {}): RegisteredGroup {
   return {
     name: 'Test Group',
     folder: 'test-group',
