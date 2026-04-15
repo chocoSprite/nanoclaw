@@ -244,7 +244,6 @@ nanoclaw/
 ├── CLAUDE.md                      # Project context for Claude Code
 ├── docs/
 │   ├── SPEC.md                    # This specification document
-│   ├── REQUIREMENTS.md            # Architecture decisions
 │   └── SECURITY.md                # Security model
 ├── README.md                      # User documentation
 ├── package.json                   # Node.js dependencies
