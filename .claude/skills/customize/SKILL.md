@@ -19,28 +19,29 @@ This skill helps users add capabilities or modify behavior. Use AskUserQuestion 
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | Orchestrator: state, message loop, agent invocation |
-| `src/channels/whatsapp.ts` | WhatsApp connection, auth, send/receive |
+| `src/channels/slack.ts` | Slack connection, auth, send/receive |
+| `src/channels/slack-mat.ts` | Slack bot variant (mat identity) |
+| `src/channels/registry.ts` | Channel self-registration |
 | `src/ipc.ts` | IPC watcher and task processing |
-| `src/router.ts` | Message formatting and outbound routing |
+| `src/router.ts` | Resolves owning channel for a JID |
 | `src/types.ts` | TypeScript interfaces (includes Channel) |
 | `src/config.ts` | Assistant name, trigger pattern, directories |
 | `src/db.ts` | Database initialization and queries |
-| `src/whatsapp-auth.ts` | Standalone WhatsApp authentication script |
 | `groups/CLAUDE.md` | Global memory/persona |
 
 ## Common Customization Patterns
 
-### Adding a New Input Channel (e.g., Telegram, Slack, Email)
+### Adding a New Input Channel (e.g., Discord, Email)
 
 Questions to ask:
-- Which channel? (Telegram, Slack, Discord, email, SMS, etc.)
+- Which channel?
 - Same trigger word or different?
 - Same memory hierarchy or separate?
 - Should messages from this channel go to existing groups or new ones?
 
 Implementation pattern:
-1. Create `src/channels/{name}.ts` implementing the `Channel` interface from `src/types.ts` (see `src/channels/whatsapp.ts` for reference)
-2. Add the channel instance to `main()` in `src/index.ts` and wire callbacks (`onMessage`, `onChatMetadata`)
+1. Create `src/channels/{name}.ts` implementing the `Channel` interface from `src/types.ts` (see `src/channels/slack.ts` for reference)
+2. Register the channel via `registerChannel(...)` at module load; import it from `src/channels/index.ts`
 3. Messages are stored via the `onMessage` callback; routing is automatic via `ownsJid()`
 
 ### Adding a New MCP Integration
@@ -101,10 +102,10 @@ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 
 ## Example Interaction
 
-User: "Add Telegram as an input channel"
+User: "Add Discord as an input channel"
 
-1. Ask: "Should Telegram use the same @패트 trigger, or a different one?"
-2. Ask: "Should Telegram messages create separate conversation contexts, or share with WhatsApp groups?"
-3. Create `src/channels/telegram.ts` implementing the `Channel` interface (see `src/channels/whatsapp.ts`)
-4. Add the channel to `main()` in `src/index.ts`
+1. Ask: "Should Discord use the same @패트 trigger, or a different one?"
+2. Ask: "Should Discord messages create separate conversation contexts, or share with existing Slack groups?"
+3. Create `src/channels/discord.ts` implementing the `Channel` interface (see `src/channels/slack.ts`)
+4. Register via `registerChannel(...)` in module load, import from `src/channels/index.ts`
 5. Tell user how to authenticate and test
