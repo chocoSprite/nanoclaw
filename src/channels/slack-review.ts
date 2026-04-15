@@ -14,13 +14,13 @@ import { SlackChannel } from './slack.js';
 
 registerChannel('slack-review', (opts: ChannelOpts) => {
   const envVars = readEnvFile([
-    'SLACK_REVIEW_BOT_TOKEN',
-    'SLACK_REVIEW_APP_TOKEN',
-    'REVIEW_ASSISTANT_NAME',
+    'SLACK_MAT_BOT_TOKEN',
+    'SLACK_MAT_APP_TOKEN',
+    'MAT_ASSISTANT_NAME',
   ]);
-  if (!envVars.SLACK_REVIEW_BOT_TOKEN || !envVars.SLACK_REVIEW_APP_TOKEN) {
+  if (!envVars.SLACK_MAT_BOT_TOKEN || !envVars.SLACK_MAT_APP_TOKEN) {
     logger.info(
-      'Slack Review: SLACK_REVIEW_BOT_TOKEN or SLACK_REVIEW_APP_TOKEN not set, skipping',
+      'Slack Review: SLACK_MAT_BOT_TOKEN or SLACK_MAT_APP_TOKEN not set, skipping',
     );
     return null;
   }
@@ -28,11 +28,11 @@ registerChannel('slack-review', (opts: ChannelOpts) => {
   return new SlackChannel({
     ...opts,
     config: {
-      botTokenKey: 'SLACK_REVIEW_BOT_TOKEN',
-      appTokenKey: 'SLACK_REVIEW_APP_TOKEN',
+      botTokenKey: 'SLACK_MAT_BOT_TOKEN',
+      appTokenKey: 'SLACK_MAT_APP_TOKEN',
       jidPrefix: 'slack-review',
       requireMention: true,
-      triggerName: envVars.REVIEW_ASSISTANT_NAME || 'Reviewer',
+      triggerName: envVars.MAT_ASSISTANT_NAME || 'Reviewer',
     },
   });
 });
