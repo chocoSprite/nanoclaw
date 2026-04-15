@@ -221,10 +221,8 @@ AskUserQuestion (multiSelect): Which messaging channels do you want to enable?
 
 For each selected channel, invoke its skill:
 
-- **WhatsApp:** Invoke `/add-whatsapp`
-- **Telegram:** Invoke `/add-telegram`
 - **Slack:** Invoke `/add-slack`
-- **Discord:** Invoke `/add-discord`
+- **Gmail:** Invoke `/add-gmail`
 
 Each skill will:
 1. Install the channel code (via `git merge` of the skill branch)
@@ -286,7 +284,7 @@ Run `npx tsx setup/index.ts --step verify` and parse the status block.
 - SERVICE=stopped → `npm run build`, then restart: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux) or `bash start-nanoclaw.sh` (WSL nohup)
 - SERVICE=not_found → re-run step 7
 - CREDENTIALS=missing → re-run step 4 (Docker: check `onecli secrets list`; Apple Container: check `.env` for credentials)
-- CHANNEL_AUTH shows `not_found` for any channel → re-invoke that channel's skill (e.g. `/add-telegram`)
+- CHANNEL_AUTH shows `not_found` for any channel → re-invoke that channel's skill (e.g. `/add-slack`)
 - REGISTERED_GROUPS=0 → re-invoke the channel skills from step 5
 - MOUNT_ALLOWLIST=missing → `npx tsx setup/index.ts --step mounts -- --empty`
 

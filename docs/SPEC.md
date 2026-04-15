@@ -233,7 +233,7 @@ To add a new channel, contribute a skill to `.claude/skills/add-<name>/` that:
 3. Returns `null` from the factory if credentials are missing
 4. Adds an import line to `src/channels/index.ts`
 
-See existing skills (`/add-whatsapp`, `/add-telegram`, `/add-slack`, `/add-discord`, `/add-gmail`) for the pattern.
+See existing skills (`/add-slack`, `/add-gmail`) for the pattern.
 
 ---
 
@@ -288,10 +288,11 @@ nanoclaw/
 │       ├── setup/SKILL.md              # /setup - First-time installation
 │       ├── customize/SKILL.md          # /customize - Add capabilities
 │       ├── debug/SKILL.md              # /debug - Container debugging
-│       ├── add-telegram/SKILL.md       # /add-telegram - Telegram channel
+│       ├── add-slack/SKILL.md          # /add-slack - Slack channel
 │       ├── add-gmail/SKILL.md          # /add-gmail - Gmail integration
-│       ├── x-integration/SKILL.md      # /x-integration - X/Twitter
-│       └── add-parallel/SKILL.md       # /add-parallel - Parallel agents
+│       ├── add-compact/SKILL.md        # /add-compact - /compact command
+│       ├── add-ollama-tool/SKILL.md    # /add-ollama-tool - Ollama MCP server
+│       └── channel-formatting/SKILL.md # /channel-formatting - Per-channel syntax
 │
 ├── groups/
 │   ├── CLAUDE.md                  # Global memory (all groups read this)
