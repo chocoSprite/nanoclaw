@@ -87,7 +87,7 @@ Check the preflight results for `APPLE_CONTAINER` and `DOCKER`, and the PLATFORM
 - PLATFORM=macos + APPLE_CONTAINER=installed → AskUserQuestion with two options:
   1. **Docker (recommended)** — description: "Cross-platform, better credential management, well-tested."
   2. **Apple Container (experimental)** — description: "Native macOS runtime. Requires advanced setup."
-  If Apple Container, run `/convert-to-apple-container` now, then skip to 3c.
+  If Apple Container, skip to 3c (this fork's source is already Apple Container-ready).
 - PLATFORM=macos + APPLE_CONTAINER=not_found → Docker
 
 ### 3a-docker. Install Docker
@@ -97,20 +97,6 @@ Check the preflight results for `APPLE_CONTAINER` and `DOCKER`, and the PLATFORM
 - DOCKER=not_found → Use `AskUserQuestion: Docker is required for running agents. Would you like me to install it?` If confirmed:
   - macOS: install via `brew install --cask docker`, then `open -a Docker` and wait for it to start. If brew not available, direct to Docker Desktop download at https://docker.com/products/docker-desktop
   - Linux: install with `curl -fsSL https://get.docker.com | sh && sudo usermod -aG docker $USER`. Note: user may need to log out/in for group membership.
-
-### 3b. Apple Container conversion gate (if needed)
-
-**If the chosen runtime is Apple Container**, you MUST check whether the source code has already been converted from Docker to Apple Container. Do NOT skip this step. Run:
-
-```bash
-grep -q "CONTAINER_RUNTIME_BIN = 'container'" src/container-runtime.ts && echo "ALREADY_CONVERTED" || echo "NEEDS_CONVERSION"
-```
-
-**If NEEDS_CONVERSION**, the source code still uses Docker as the runtime. You MUST run the `/convert-to-apple-container` skill NOW, before proceeding to the build step.
-
-**If ALREADY_CONVERTED**, the code already uses Apple Container. Continue to 3c.
-
-**If the chosen runtime is Docker**, no conversion is needed. Continue to 3c.
 
 ### 3c. Build and test
 
@@ -200,7 +186,7 @@ Ask them to let you know when done.
 
 ### 4b. Apple Container → Native Credential Proxy
 
-Apple Container is not compatible with OneCLI. The credential proxy code is already included in the apple-container branch — do NOT invoke `/use-native-credential-proxy` (it would conflict with already-applied code).
+Apple Container is not compatible with OneCLI. The credential proxy code is already included in this fork's source.
 
 Instead, just configure the credentials in `.env`:
 

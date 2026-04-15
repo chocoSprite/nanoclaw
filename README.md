@@ -144,7 +144,7 @@ Key files:
 
 **Why Docker?**
 
-Docker provides cross-platform support (macOS, Linux and even Windows via WSL2) and a mature ecosystem. On macOS, you can optionally switch to Apple Container via `/convert-to-apple-container` for a lighter-weight native runtime.
+Docker provides cross-platform support (macOS, Linux and even Windows via WSL2) and a mature ecosystem. This fork uses Apple Container on macOS as the default runtime.
 
 **Can I run this on Linux or Windows?**
 
