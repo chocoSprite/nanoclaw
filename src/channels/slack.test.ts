@@ -25,6 +25,7 @@ vi.mock('../logger.js', () => ({
 // Mock db
 vi.mock('../db.js', () => ({
   updateChatName: vi.fn(),
+  storeMessage: vi.fn(),
 }));
 
 // --- @slack/bolt mock ---
@@ -46,7 +47,11 @@ vi.mock('@slack/bolt', () => ({
           .mockResolvedValue({ user_id: 'U_BOT_123', bot_id: 'B_BOT_123' }),
       },
       chat: {
-        postMessage: vi.fn().mockResolvedValue(undefined),
+        // Return a synthetic ts per call so sendMessage can record its own
+        // outbound. Tests that need a specific ts override this via mockResolvedValueOnce.
+        postMessage: vi.fn().mockImplementation(() =>
+          Promise.resolve({ ts: `${Date.now() / 1000}.000000` }),
+        ),
       },
       conversations: {
         list: vi.fn().mockResolvedValue({
@@ -86,7 +91,7 @@ vi.mock('../env.js', () => ({
 }));
 
 import { SlackChannel, SlackChannelOpts } from './slack.js';
-import { updateChatName } from '../db.js';
+import { storeMessage, updateChatName } from '../db.js';
 import { readEnvFile } from '../env.js';
 
 // --- Test helpers ---
@@ -706,6 +711,118 @@ describe('SlackChannel', () => {
 
       // 4000 + 4000 + 500 = 3 messages
       expect(currentApp().client.chat.postMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it('records own outbound message via storeMessage', async () => {
+      const opts = createTestOpts();
+      const channel = new SlackChannel(opts);
+      await channel.connect();
+
+      currentApp().client.chat.postMessage.mockResolvedValueOnce({
+        ts: '1800000000.000000',
+      });
+      await channel.sendMessage('slack:C0123456789', 'Agent reply');
+
+      expect(storeMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: '1800000000.000000',
+          chat_jid: 'slack:C0123456789',
+          sender: 'U_BOT_123',
+          sender_name: 'Jonesy',
+          content: 'Agent reply',
+          is_from_me: true,
+          is_bot_message: true,
+          timestamp: '2027-01-15T08:00:00.000Z',
+        }),
+      );
+    });
+
+    it('records each chunk of a split long message with its own ts', async () => {
+      const opts = createTestOpts();
+      const channel = new SlackChannel(opts);
+      await channel.connect();
+
+      currentApp()
+        .client.chat.postMessage.mockResolvedValueOnce({ ts: '1800000001.000000' })
+        .mockResolvedValueOnce({ ts: '1800000002.000000' });
+
+      const longText = 'X'.repeat(4500);
+      await channel.sendMessage('slack:C0123456789', longText);
+
+      expect(storeMessage).toHaveBeenCalledTimes(2);
+      expect(storeMessage).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          id: '1800000001.000000',
+          content: 'X'.repeat(4000),
+          is_from_me: true,
+        }),
+      );
+      expect(storeMessage).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          id: '1800000002.000000',
+          content: 'X'.repeat(500),
+          is_from_me: true,
+        }),
+      );
+    });
+
+    it('stores thread_id when sending inside a thread', async () => {
+      const opts = createTestOpts();
+      const channel = new SlackChannel(opts);
+      await channel.connect();
+
+      currentApp().client.chat.postMessage.mockResolvedValueOnce({
+        ts: '1800000003.000000',
+      });
+      await channel.sendMessage('slack:C0123456789', 'Thread reply', {
+        threadTs: '1704067200.000000',
+      });
+
+      expect(storeMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: '1800000003.000000',
+          thread_id: '1704067200.000000',
+          is_from_me: true,
+        }),
+      );
+    });
+
+    it('skips the DB write when postMessage returns no ts', async () => {
+      const opts = createTestOpts();
+      const channel = new SlackChannel(opts);
+      await channel.connect();
+
+      currentApp().client.chat.postMessage.mockResolvedValueOnce(undefined);
+      await channel.sendMessage('slack:C0123456789', 'No ts returned');
+
+      expect(storeMessage).not.toHaveBeenCalled();
+    });
+
+    it('drops Slack echo of a message we just recorded', async () => {
+      const opts = createTestOpts();
+      const channel = new SlackChannel(opts);
+      await channel.connect();
+
+      currentApp().client.chat.postMessage.mockResolvedValueOnce({
+        ts: '1800000004.000000',
+      });
+      await channel.sendMessage('slack:C0123456789', 'Hello');
+      vi.mocked(opts.onMessage).mockClear();
+
+      // Simulate Slack echoing the same message back as a bot_message event.
+      const echo = createMessageEvent({
+        ts: '1800000004.000000',
+        subtype: 'bot_message',
+        botId: 'B_UNKNOWN', // ownBotId match fails, as in real observed behavior
+        text: 'Hello',
+      });
+      await triggerMessageEvent(echo);
+
+      // Echo is dropped — no onMessage delivery, no duplicate storeMessage
+      // that would clobber is_from_me=1.
+      expect(opts.onMessage).not.toHaveBeenCalled();
     });
 
     it('flushes queued messages on connect', async () => {

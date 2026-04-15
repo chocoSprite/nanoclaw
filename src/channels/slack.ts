@@ -11,7 +11,7 @@ import type {
 import { PAT_ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { DATA_DIR } from '../config.js';
 import { translateContainerPath } from '../container-path-translator.js';
-import { updateChatName } from '../db.js';
+import { storeMessage, updateChatName } from '../db.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import {
@@ -103,6 +103,11 @@ export class SlackChannel implements Channel {
   private requireMention: boolean;
   private triggerName: string;
   private ownBotId: string | undefined;
+  // Timestamps of messages this channel just sent. Slack's echo of our own
+  // sends arrives unreliably and sometimes with ownBotId matching failures,
+  // which would clobber the is_from_me=1 row we proactively wrote. Skipping
+  // echoes whose ts we recognise keeps our authoritative write intact.
+  private recentOwnMessageTs = new Map<string, number>();
 
   constructor(opts: SlackChannelOpts) {
     this.opts = opts;
@@ -184,6 +189,15 @@ export class SlackChannel implements Channel {
       // Only deliver full messages for registered groups
       const groups = this.opts.registeredGroups();
       if (!groups[jid]) return;
+
+      // Skip Slack's echo of a message we just sent (and already recorded
+      // via sendMessage). Leaving it in would cause storeMessage to
+      // overwrite is_from_me=1 with whatever the echo path infers, which
+      // is often wrong because ownBotId matching is unreliable.
+      if (this.recentOwnMessageTs.has(msg.ts)) {
+        this.recentOwnMessageTs.delete(msg.ts);
+        return;
+      }
 
       // Detect messages from THIS bot vs other bots in the channel.
       // We check both user ID and bot_id for reliable self-detection.
@@ -354,22 +368,25 @@ export class SlackChannel implements Channel {
       // Send text message
       if (messageText && messageText.length > 0) {
         if (messageText.length <= MAX_MESSAGE_LENGTH) {
-          await this.app.client.chat.postMessage({
+          const res = await this.app.client.chat.postMessage({
             channel: channelId,
             text: messageText,
             thread_ts: opts?.threadTs,
             unfurl_links: false,
             unfurl_media: false,
           });
+          this.recordOwnMessage(jid, res, messageText, opts?.threadTs);
         } else {
           for (let i = 0; i < messageText.length; i += MAX_MESSAGE_LENGTH) {
-            await this.app.client.chat.postMessage({
+            const chunk = messageText.slice(i, i + MAX_MESSAGE_LENGTH);
+            const res = await this.app.client.chat.postMessage({
               channel: channelId,
-              text: messageText.slice(i, i + MAX_MESSAGE_LENGTH),
+              text: chunk,
               thread_ts: opts?.threadTs,
               unfurl_links: false,
               unfurl_media: false,
             });
+            this.recordOwnMessage(jid, res, chunk, opts?.threadTs);
           }
         }
       }
@@ -424,6 +441,54 @@ export class SlackChannel implements Channel {
   // doesn't need channel-specific branching.
   async setTyping(_jid: string, _isTyping: boolean): Promise<void> {
     // no-op: Slack Bot API has no typing indicator endpoint
+  }
+
+  /**
+   * Proactively record a message we just sent as our own bot output.
+   *
+   * Slack's Socket Mode delivers our own sends back as `bot_message` events,
+   * but (a) delivery is flaky — especially for secondary bots on the same
+   * workspace — and (b) `ownBotId` matching fails often enough that echoes
+   * that do arrive are misclassified. Writing directly at send time makes
+   * `is_from_me=1` authoritative for cursor recovery and history filters.
+   *
+   * The ts returned by chat.postMessage is remembered so the eventual echo
+   * (if any) is dropped in the event handler and doesn't clobber this row.
+   */
+  private recordOwnMessage(
+    jid: string,
+    res: { ts?: string } | undefined,
+    content: string,
+    threadTs?: string,
+  ): void {
+    const ts = res?.ts;
+    if (!ts) return;
+
+    this.recentOwnMessageTs.set(ts, Date.now());
+    // Trim to avoid unbounded growth. 500 entries covers a burst of
+    // outbound messages well beyond any echo-delivery window.
+    if (this.recentOwnMessageTs.size > 500) {
+      const cutoff = Date.now() - 60_000;
+      for (const [k, t] of this.recentOwnMessageTs) {
+        if (t < cutoff) this.recentOwnMessageTs.delete(k);
+      }
+    }
+
+    try {
+      storeMessage({
+        id: ts,
+        chat_jid: jid,
+        sender: this.botUserId || '',
+        sender_name: this.triggerName,
+        content,
+        timestamp: new Date(parseFloat(ts) * 1000).toISOString(),
+        is_from_me: true,
+        is_bot_message: true,
+        thread_id: threadTs,
+      });
+    } catch (err) {
+      logger.warn({ jid, ts, err }, 'Failed to record own Slack message');
+    }
   }
 
   /**
@@ -790,11 +855,12 @@ export class SlackChannel implements Channel {
           new RegExp(`^${this.jidPrefix}:`),
           '',
         );
-        await this.app.client.chat.postMessage({
+        const res = await this.app.client.chat.postMessage({
           channel: channelId,
           text: item.text,
           thread_ts: item.threadTs,
         });
+        this.recordOwnMessage(item.jid, res, item.text, item.threadTs);
         logger.info(
           { jid: item.jid, length: item.text.length },
           'Queued Slack message sent',
