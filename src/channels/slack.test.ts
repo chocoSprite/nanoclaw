@@ -49,9 +49,11 @@ vi.mock('@slack/bolt', () => ({
       chat: {
         // Return a synthetic ts per call so sendMessage can record its own
         // outbound. Tests that need a specific ts override this via mockResolvedValueOnce.
-        postMessage: vi.fn().mockImplementation(() =>
-          Promise.resolve({ ts: `${Date.now() / 1000}.000000` }),
-        ),
+        postMessage: vi
+          .fn()
+          .mockImplementation(() =>
+            Promise.resolve({ ts: `${Date.now() / 1000}.000000` }),
+          ),
       },
       conversations: {
         list: vi.fn().mockResolvedValue({
@@ -743,7 +745,9 @@ describe('SlackChannel', () => {
       await channel.connect();
 
       currentApp()
-        .client.chat.postMessage.mockResolvedValueOnce({ ts: '1800000001.000000' })
+        .client.chat.postMessage.mockResolvedValueOnce({
+          ts: '1800000001.000000',
+        })
         .mockResolvedValueOnce({ ts: '1800000002.000000' });
 
       const longText = 'X'.repeat(4500);
