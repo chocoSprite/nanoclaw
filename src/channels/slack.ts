@@ -8,7 +8,7 @@ import type {
   FileShareMessageEvent,
 } from '@slack/types';
 
-import { PAT_ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { PAT_ASSISTANT_NAME } from '../config.js';
 import { DATA_DIR } from '../config.js';
 import { translateContainerPath } from '../container-path-translator.js';
 import { storeMessage, updateChatName } from '../db.js';

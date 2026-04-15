@@ -4,7 +4,7 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 
 ## Quick Context
 
-Single Node.js process with skill-based channel system. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
+Single Node.js process with skill-based channel system. Channels (Slack, Gmail) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
 
 ## Key Files
 
@@ -28,7 +28,7 @@ API keys, secret keys, OAuth tokens, and auth credentials are managed by the One
 
 ## Skills
 
-Four types of skills exist in NanoClaw:
+Three types of skills exist in NanoClaw:
 
 - **Feature skills** — merge a `skill/*` branch to add capabilities (e.g. `/add-slack`, `/add-gmail`)
 - **Operational skills** — instruction-only workflows, always on `main` (e.g. `/setup`, `/debug`)
@@ -39,7 +39,6 @@ Four types of skills exist in NanoClaw:
 | `/setup` | First-time installation, authentication, service configuration |
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
-| `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
 
 ## Development
 
@@ -50,6 +49,25 @@ npm run dev          # Run with hot reload
 npm run build        # Compile TypeScript
 ./container/build.sh # Rebuild agent container
 ```
+
+## Pre-Commit (MUST)
+
+커밋 직전에 아래 세 가지를 **순서대로 전부 통과**시킨 뒤에만 `git commit` 한다.
+husky 같은 자동 훅 없이 운영되므로, 이 책임은 전적으로 Claude(나) 에게 있다.
+
+```bash
+npm run format:fix     # prettier --write "src/**/*.ts" — 포맷 자동 정리
+npx eslint src/        # 0 errors 필수 (warnings 는 차단 아님)
+npx vitest run         # 전체 테스트 통과 필수
+```
+
+세 가지 중 하나라도 실패하면 원인 고친 뒤 다시 돌리고, 그래도 실패하면 커밋 안 한다.
+변경 파일이 `src/` 밖(예: docs, config)이어도 관행상 셋 다 돌려 상태를 깨끗이 유지.
+
+운영 룰:
+- `npm run format:fix` 결과 없음 = 좋음 (변경점 없음)
+- `eslint` 에 새 error 나오면 그 파일 수정 → 룰 완화 금지 (룰 바꾸려면 별도 논의)
+- 테스트 실패하면 코드 고치거나 테스트 반영 — skip/xdescribe 로 우회 금지
 
 Service management:
 ```bash

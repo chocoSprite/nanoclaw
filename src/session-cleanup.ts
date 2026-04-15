@@ -12,7 +12,7 @@ const INITIAL_DELAY = 30_000; // 30 seconds after startup
 const INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 
 function runCleanup(): void {
-  execFile('bash', [CLEANUP_SCRIPT], (err, stdout, stderr) => {
+  execFile('bash', [CLEANUP_SCRIPT], (err, stdout, _stderr) => {
     if (err) {
       logger.warn({ err }, 'Session cleanup failed');
       return;
