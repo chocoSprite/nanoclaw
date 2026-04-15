@@ -314,7 +314,15 @@ describe('database migrations', () => {
         .prepare(
           `INSERT INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run('msg1', 'slack-review:C0APYRWQRFH', 'u1', 'User', 'hi', '2024-01-01T00:00:00.000Z', 0);
+        .run(
+          'msg1',
+          'slack-review:C0APYRWQRFH',
+          'u1',
+          'User',
+          'hi',
+          '2024-01-01T00:00:00.000Z',
+          0,
+        );
       seed
         .prepare(
           `INSERT INTO chats (jid, name, channel, is_group) VALUES (?, ?, ?, ?)`,
@@ -324,7 +332,15 @@ describe('database migrations', () => {
         .prepare(
           `INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run('t1', 'slack_agent_labs_mat', 'slack-review:C0APYRWQRFH', 'p', 'cron', '0 0 * * *', '2024-01-01T00:00:00.000Z');
+        .run(
+          't1',
+          'slack_agent_labs_mat',
+          'slack-review:C0APYRWQRFH',
+          'p',
+          'cron',
+          '0 0 * * *',
+          '2024-01-01T00:00:00.000Z',
+        );
       seed
         .prepare(`INSERT INTO router_state (key, value) VALUES (?, ?)`)
         .run(
@@ -341,16 +357,40 @@ describe('database migrations', () => {
 
       // All slack-review: references should be gone
       expect(
-        (db.prepare(`SELECT COUNT(*) as n FROM registered_groups WHERE jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) as n FROM registered_groups WHERE jid LIKE 'slack-review:%'`,
+            )
+            .get() as { n: number }
+        ).n,
       ).toBe(0);
       expect(
-        (db.prepare(`SELECT COUNT(*) as n FROM messages WHERE chat_jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) as n FROM messages WHERE chat_jid LIKE 'slack-review:%'`,
+            )
+            .get() as { n: number }
+        ).n,
       ).toBe(0);
       expect(
-        (db.prepare(`SELECT COUNT(*) as n FROM chats WHERE jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) as n FROM chats WHERE jid LIKE 'slack-review:%'`,
+            )
+            .get() as { n: number }
+        ).n,
       ).toBe(0);
       expect(
-        (db.prepare(`SELECT COUNT(*) as n FROM scheduled_tasks WHERE chat_jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) as n FROM scheduled_tasks WHERE chat_jid LIKE 'slack-review:%'`,
+            )
+            .get() as { n: number }
+        ).n,
       ).toBe(0);
 
       // slack-mat: should take their place
@@ -364,7 +404,11 @@ describe('database migrations', () => {
       expect(regRow.review_config).toBe('{"enabled":true,"maxRounds":3}');
 
       const routerValue = (
-        db.prepare(`SELECT value FROM router_state WHERE key = 'last_agent_timestamp'`).get() as { value: string }
+        db
+          .prepare(
+            `SELECT value FROM router_state WHERE key = 'last_agent_timestamp'`,
+          )
+          .get() as { value: string }
       ).value;
       expect(routerValue).toContain('slack-mat:C0APYRWQRFH');
       expect(routerValue).not.toContain('slack-review:');
