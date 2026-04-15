@@ -30,9 +30,9 @@ vi.mock('../db.js', () => ({
 
 // --- @slack/bolt mock ---
 
-type Handler = (...args: any[]) => any;
+type Handler = (...args: unknown[]) => unknown;
 
-const appRef = vi.hoisted(() => ({ current: null as any }));
+const appRef = vi.hoisted(() => ({ current: null as unknown }));
 
 vi.mock('@slack/bolt', () => ({
   App: class MockApp {
@@ -68,7 +68,7 @@ vi.mock('@slack/bolt', () => ({
       },
     };
 
-    constructor(opts: any) {
+    constructor(opts: { token: string; appToken: string }) {
       this.token = opts.token;
       this.appToken = opts.appToken;
       appRef.current = this;
@@ -288,7 +288,7 @@ describe('SlackChannel', () => {
       const channel = new SlackChannel(opts);
       await channel.connect();
 
-      const event = createMessageEvent({ text: undefined as any });
+      const event = createMessageEvent({ text: undefined });
       await triggerMessageEvent(event);
 
       expect(opts.onMessage).not.toHaveBeenCalled();

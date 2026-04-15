@@ -115,10 +115,11 @@ export async function startRemoteControl(
       stdio: ['pipe', stdoutFd, stderrFd],
       detached: true,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     fs.closeSync(stdoutFd);
     fs.closeSync(stderrFd);
-    return { ok: false, error: `Failed to start: ${err.message}` };
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Failed to start: ${message}` };
   }
 
   // Auto-accept the "Enable Remote Control?" prompt

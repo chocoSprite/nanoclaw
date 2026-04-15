@@ -56,17 +56,23 @@ npm run build        # Compile TypeScript
 husky 같은 자동 훅 없이 운영되므로, 이 책임은 전적으로 Claude(나) 에게 있다.
 
 ```bash
-npm run format:fix     # prettier --write "src/**/*.ts" — 포맷 자동 정리
-npx eslint src/        # 0 errors 필수 (warnings 는 차단 아님)
-npx vitest run         # 전체 테스트 통과 필수
+npm run format:fix            # prettier --write "src/**/*.ts"
+npx eslint src/ --max-warnings 0   # 0 errors + 0 warnings 필수
+npx vitest run                # 전체 테스트 통과 필수
 ```
 
 세 가지 중 하나라도 실패하면 원인 고친 뒤 다시 돌리고, 그래도 실패하면 커밋 안 한다.
 변경 파일이 `src/` 밖(예: docs, config)이어도 관행상 셋 다 돌려 상태를 깨끗이 유지.
 
+현재 활성화된 lint 룰 (`eslint.config.js`):
+- `preserve-caught-error: error` — catch 블록에서 새 Error 던질 때 `cause`로 원본 연결
+- `@typescript-eslint/no-unused-vars: error` — `_` 접두사는 허용
+- `@typescript-eslint/no-explicit-any: error` — `any` 금지 (의도적이면 `unknown` + 타입가드)
+- `no-catch-all/no-catch-all: off` — catch-all 스타일 허용 (디자인 선호 이슈로 끔)
+
 운영 룰:
 - `npm run format:fix` 결과 없음 = 좋음 (변경점 없음)
-- `eslint` 에 새 error 나오면 그 파일 수정 → 룰 완화 금지 (룰 바꾸려면 별도 논의)
+- `eslint` 에 새 error/warning 나오면 그 파일 수정 → 룰 완화 금지 (룰 바꾸려면 별도 논의)
 - 테스트 실패하면 코드 고치거나 테스트 반영 — skip/xdescribe 로 우회 금지
 
 Service management:

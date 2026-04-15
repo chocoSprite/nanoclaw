@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _initTestDatabase, createTask, getTaskById } from './db.js';
+import type { GroupQueue } from './group-queue.js';
 import {
   _resetSchedulerLoopForTests,
   computeNextRun,
@@ -41,7 +42,7 @@ describe('task scheduler', () => {
     startSchedulerLoop({
       registeredGroups: () => ({}),
       getSessions: () => ({}),
-      queue: { enqueueTask } as any,
+      queue: { enqueueTask } as unknown as GroupQueue,
       onProcess: () => {},
       sendMessage: async () => {},
     });
