@@ -31,8 +31,9 @@ RUN apt-get update && apt-get install -y \
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install agent-browser, codex, and claude-code globally
-RUN npm install -g agent-browser @openai/codex @anthropic-ai/claude-code
+# Install agent-browser, codex, claude-code, and bun globally
+# (bun via npm works without unzip, unlike bun.sh/install)
+RUN npm install -g agent-browser @openai/codex @anthropic-ai/claude-code bun
 
 # Create app directory
 WORKDIR /app
