@@ -2,7 +2,7 @@ import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL } from './config.js';
+import { PAT_ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL } from './config.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -131,7 +131,7 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
-        assistantName: ASSISTANT_NAME,
+        assistantName: PAT_ASSISTANT_NAME,
         script: task.script || undefined,
         sdk: group.sdk,
         model: resolveModel(group.sdk, group.model),

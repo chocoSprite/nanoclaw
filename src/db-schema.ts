@@ -5,7 +5,7 @@
  */
 import Database from 'better-sqlite3';
 
-import { ASSISTANT_NAME } from './config.js';
+import { PAT_ASSISTANT_NAME } from './config.js';
 
 export function createSchema(database: Database.Database): void {
   database.exec(`
@@ -79,6 +79,7 @@ export function createSchema(database: Database.Database): void {
       requires_trigger INTEGER DEFAULT 1,
       is_main INTEGER DEFAULT 0,
       review_config TEXT,
+      mat_config TEXT,
       sdk TEXT DEFAULT 'codex',
       model TEXT
     );
@@ -124,7 +125,7 @@ const migrations: Migration[] = [
       );
       db.prepare(
         `UPDATE messages SET is_bot_message = 1 WHERE content LIKE ?`,
-      ).run(`${ASSISTANT_NAME}:%`);
+      ).run(`${PAT_ASSISTANT_NAME}:%`);
     } catch {
       /* already exists */
     }
@@ -198,6 +199,48 @@ const migrations: Migration[] = [
   // 10: remove __group_sync__ sentinel from chats
   (db) => {
     db.exec(`DELETE FROM chats WHERE jid = '__group_sync__'`);
+  },
+  // 11: slack-review → slack-mat rename + review_config → mat_config column
+  //     Atomic: all-or-nothing via transaction. No-op on fresh installs
+  //     (UPDATE ... WHERE jid LIKE 'slack-review:%' matches 0 rows).
+  //
+  //     defer_foreign_keys: messages.chat_jid → chats.jid FK would fire
+  //     mid-transaction as we rename chats and messages in sequence. Deferring
+  //     postpones the check until COMMIT, by which time all tables are consistent.
+  (db) => {
+    const tx = db.transaction(() => {
+      db.pragma('defer_foreign_keys = ON');
+      try {
+        db.exec(`ALTER TABLE registered_groups ADD COLUMN mat_config TEXT`);
+      } catch {
+        /* already exists (fresh CREATE TABLE covers it) */
+      }
+      db.exec(
+        `UPDATE registered_groups SET mat_config = review_config
+         WHERE review_config IS NOT NULL AND mat_config IS NULL`,
+      );
+      db.exec(
+        `UPDATE registered_groups SET jid = REPLACE(jid, 'slack-review:', 'slack-mat:')
+         WHERE jid LIKE 'slack-review:%'`,
+      );
+      db.exec(
+        `UPDATE chats SET jid = REPLACE(jid, 'slack-review:', 'slack-mat:')
+         WHERE jid LIKE 'slack-review:%'`,
+      );
+      db.exec(
+        `UPDATE messages SET chat_jid = REPLACE(chat_jid, 'slack-review:', 'slack-mat:')
+         WHERE chat_jid LIKE 'slack-review:%'`,
+      );
+      db.exec(
+        `UPDATE scheduled_tasks SET chat_jid = REPLACE(chat_jid, 'slack-review:', 'slack-mat:')
+         WHERE chat_jid LIKE 'slack-review:%'`,
+      );
+      db.exec(
+        `UPDATE router_state SET value = REPLACE(value, 'slack-review:', 'slack-mat:')
+         WHERE value LIKE '%slack-review:%'`,
+      );
+    });
+    tx();
   },
 ];
 

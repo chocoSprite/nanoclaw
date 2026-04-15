@@ -8,7 +8,7 @@ import type {
   FileShareMessageEvent,
 } from '@slack/types';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { PAT_ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { DATA_DIR } from '../config.js';
 import { translateContainerPath } from '../container-path-translator.js';
 import { updateChatName } from '../db.js';
@@ -56,9 +56,9 @@ type HandledMessageEvent =
   | FileShareMessageEvent;
 
 export interface SlackChannelConfig {
-  /** .env key for Bot User OAuth Token (default: 'SLACK_BOT_TOKEN') */
+  /** .env key for Bot User OAuth Token (default: 'SLACK_PAT_BOT_TOKEN') */
   botTokenKey?: string;
-  /** .env key for App-Level Token (default: 'SLACK_APP_TOKEN') */
+  /** .env key for App-Level Token (default: 'SLACK_PAT_APP_TOKEN') */
   appTokenKey?: string;
   /** JID prefix used to namespace this channel (default: 'slack') */
   jidPrefix?: string;
@@ -66,7 +66,7 @@ export interface SlackChannelConfig {
   ignoreMentions?: string[];
   /** If true, only process messages that @mention this bot (default: false) */
   requireMention?: boolean;
-  /** Name to use when translating @mentions into trigger format (default: ASSISTANT_NAME) */
+  /** Name to use when translating @mentions into trigger format (default: PAT_ASSISTANT_NAME) */
   triggerName?: string;
 }
 
@@ -79,7 +79,7 @@ export interface SlackChannelOpts {
 
 // Module-level shared map: triggerName → Slack user ID.
 // Populated by each SlackChannel on connect(). Used to translate
-// outbound @mentions (e.g. "@Reviewer") into Slack <@UID> format.
+// outbound @mentions (e.g. "@매트") into Slack <@UID> format.
 const botMentionMap = new Map<string, string>();
 
 export class SlackChannel implements Channel {
@@ -108,13 +108,13 @@ export class SlackChannel implements Channel {
     this.opts = opts;
     const cfg = opts.config ?? {};
     this.jidPrefix = cfg.jidPrefix ?? 'slack';
-    this.botTokenKey = cfg.botTokenKey ?? 'SLACK_BOT_TOKEN';
+    this.botTokenKey = cfg.botTokenKey ?? 'SLACK_PAT_BOT_TOKEN';
     this.ignoreMentions = cfg.ignoreMentions ?? [];
     this.requireMention = cfg.requireMention ?? false;
-    this.triggerName = cfg.triggerName ?? ASSISTANT_NAME;
+    this.triggerName = cfg.triggerName ?? PAT_ASSISTANT_NAME;
     this.name = this.jidPrefix;
 
-    const appTokenKey = cfg.appTokenKey ?? 'SLACK_APP_TOKEN';
+    const appTokenKey = cfg.appTokenKey ?? 'SLACK_PAT_APP_TOKEN';
 
     // Read tokens from .env (not process.env — keeps secrets off the environment
     // so they don't leak to child processes, matching NanoClaw's security pattern)
@@ -340,7 +340,7 @@ export class SlackChannel implements Channel {
       return;
     }
 
-    // Translate @mentions (e.g. "@Reviewer") to Slack <@UID> format
+    // Translate @mentions (e.g. "@매트") to Slack <@UID> format
     const mentionTranslated = this.translateOutboundMentions(text);
 
     // Extract files (images + general) from agent output
@@ -434,7 +434,7 @@ export class SlackChannel implements Channel {
     if (!text.includes('@')) return text;
     let result = text;
 
-    // Bot mentions (e.g. @Reviewer → <@U...>)
+    // Bot mentions (e.g. @매트 → <@U...>)
     for (const [name, uid] of botMentionMap) {
       if (result.includes(`@${name}`)) {
         result = result.replaceAll(`@${name}`, `<@${uid}>`);
@@ -807,10 +807,16 @@ export class SlackChannel implements Channel {
 }
 
 registerChannel('slack', (opts: ChannelOpts) => {
-  const envVars = readEnvFile(['SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN']);
-  if (!envVars.SLACK_BOT_TOKEN || !envVars.SLACK_APP_TOKEN) {
-    logger.warn('Slack: SLACK_BOT_TOKEN or SLACK_APP_TOKEN not set');
+  const envVars = readEnvFile(['SLACK_PAT_BOT_TOKEN', 'SLACK_PAT_APP_TOKEN']);
+  if (!envVars.SLACK_PAT_BOT_TOKEN || !envVars.SLACK_PAT_APP_TOKEN) {
+    logger.warn('Slack: SLACK_PAT_BOT_TOKEN or SLACK_PAT_APP_TOKEN not set');
     return null;
   }
-  return new SlackChannel(opts);
+  return new SlackChannel({
+    ...opts,
+    config: {
+      botTokenKey: 'SLACK_PAT_BOT_TOKEN',
+      appTokenKey: 'SLACK_PAT_APP_TOKEN',
+    },
+  });
 });

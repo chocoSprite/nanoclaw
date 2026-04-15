@@ -74,7 +74,7 @@ If the user doesn't have a bot token, tell them:
 > I need you to create a Discord bot:
 >
 > 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-> 2. Click **New Application** and give it a name (e.g., "Andy Assistant")
+> 2. Click **New Application** and give it a name (e.g., "패트 Assistant")
 > 3. Go to the **Bot** tab on the left sidebar
 > 4. Click **Reset Token** to generate a new bot token — copy it immediately (you can only see it once)
 > 5. Under **Privileged Gateway Intents**, enable:
@@ -135,13 +135,13 @@ The channel ID, name, and folder name are needed. Use `npx tsx setup/index.ts --
 For a main channel (responds to all messages):
 
 ```bash
-npx tsx setup/index.ts --step register -- --jid "dc:<channel-id>" --name "<server-name> #<channel-name>" --folder "discord_main" --trigger "@${ASSISTANT_NAME}" --channel discord --no-trigger-required --is-main
+npx tsx setup/index.ts --step register -- --jid "dc:<channel-id>" --name "<server-name> #<channel-name>" --folder "discord_main" --trigger "@${PAT_ASSISTANT_NAME}" --channel discord --no-trigger-required --is-main
 ```
 
 For additional channels (trigger-only):
 
 ```bash
-npx tsx setup/index.ts --step register -- --jid "dc:<channel-id>" --name "<server-name> #<channel-name>" --folder "discord_<channel-name>" --trigger "@${ASSISTANT_NAME}" --channel discord
+npx tsx setup/index.ts --step register -- --jid "dc:<channel-id>" --name "<server-name> #<channel-name>" --folder "discord_<channel-name>" --trigger "@${PAT_ASSISTANT_NAME}" --channel discord
 ```
 
 ## Phase 5: Verify

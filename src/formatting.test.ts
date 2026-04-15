@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  ASSISTANT_NAME,
+  PAT_ASSISTANT_NAME,
   getTriggerPattern,
   TRIGGER_PATTERN,
 } from './config.js';
@@ -131,7 +131,7 @@ describe('formatMessages', () => {
 // --- TRIGGER_PATTERN ---
 
 describe('TRIGGER_PATTERN', () => {
-  const name = ASSISTANT_NAME;
+  const name = PAT_ASSISTANT_NAME;
   const lower = name.toLowerCase();
   const upper = name.toUpperCase();
 
@@ -171,13 +171,13 @@ describe('getTriggerPattern', () => {
     const pattern = getTriggerPattern('@Claw');
 
     expect(pattern.test('@Claw hello')).toBe(true);
-    expect(pattern.test(`@${ASSISTANT_NAME} hello`)).toBe(false);
+    expect(pattern.test(`@${PAT_ASSISTANT_NAME} hello`)).toBe(false);
   });
 
   it('falls back to the default trigger when group trigger is missing', () => {
     const pattern = getTriggerPattern(undefined);
 
-    expect(pattern.test(`@${ASSISTANT_NAME} hello`)).toBe(true);
+    expect(pattern.test(`@${PAT_ASSISTANT_NAME} hello`)).toBe(true);
   });
 
   it('treats regex characters in custom triggers literally', () => {
@@ -274,7 +274,7 @@ describe('trigger gating (requiresTrigger interaction)', () => {
   });
 
   it('non-main group with requiresTrigger=true processes when trigger present', () => {
-    const msgs = [makeMsg({ content: `@${ASSISTANT_NAME} do something` })];
+    const msgs = [makeMsg({ content: `@${PAT_ASSISTANT_NAME} do something` })];
     expect(shouldProcess(false, true, undefined, msgs)).toBe(true);
   });
 
@@ -284,7 +284,7 @@ describe('trigger gating (requiresTrigger interaction)', () => {
   });
 
   it('non-main group does not process when only the default trigger is present for a custom-trigger group', () => {
-    const msgs = [makeMsg({ content: `@${ASSISTANT_NAME} do something` })];
+    const msgs = [makeMsg({ content: `@${PAT_ASSISTANT_NAME} do something` })];
     expect(shouldProcess(false, true, '@Claw', msgs)).toBe(false);
   });
 

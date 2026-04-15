@@ -203,6 +203,7 @@ describe('database migrations', () => {
       expect(colNames(msgCols)).toContain('thread_id');
       expect(colNames(regCols)).toContain('is_main');
       expect(colNames(regCols)).toContain('review_config');
+      expect(colNames(regCols)).toContain('mat_config');
       expect(colNames(regCols)).toContain('sdk');
       expect(colNames(regCols)).toContain('model');
       expect(colNames(chatCols)).toContain('channel');
@@ -212,6 +213,165 @@ describe('database migrations', () => {
       const chats = getAllChats();
       expect(chats.find((c) => c.jid === '__group_sync__')).toBeUndefined();
 
+      _closeDatabase();
+    } finally {
+      process.chdir(repoRoot);
+    }
+  });
+
+  it('migration 11 renames slack-review → slack-mat across tables', async () => {
+    const repoRoot = process.cwd();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nanoclaw-db-test-'));
+
+    try {
+      process.chdir(tempDir);
+      fs.mkdirSync(path.join(tempDir, 'store'), { recursive: true });
+
+      // Build a DB at user_version=10 (pre-migration-11) with slack-review data
+      const dbPath = path.join(tempDir, 'store', 'messages.db');
+      const seed = new Database(dbPath);
+      seed.exec(`
+        CREATE TABLE chats (
+          jid TEXT PRIMARY KEY,
+          name TEXT,
+          last_message_time TEXT,
+          channel TEXT,
+          is_group INTEGER DEFAULT 0
+        );
+        CREATE TABLE messages (
+          id TEXT,
+          chat_jid TEXT,
+          sender TEXT,
+          sender_name TEXT,
+          content TEXT,
+          timestamp TEXT,
+          is_from_me INTEGER,
+          is_bot_message INTEGER DEFAULT 0,
+          thread_id TEXT,
+          PRIMARY KEY (id, chat_jid)
+        );
+        CREATE TABLE scheduled_tasks (
+          id TEXT PRIMARY KEY,
+          group_folder TEXT NOT NULL,
+          chat_jid TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          schedule_type TEXT NOT NULL,
+          schedule_value TEXT NOT NULL,
+          next_run TEXT,
+          last_run TEXT,
+          last_result TEXT,
+          status TEXT DEFAULT 'active',
+          created_at TEXT NOT NULL,
+          context_mode TEXT DEFAULT 'isolated',
+          script TEXT
+        );
+        CREATE TABLE registered_groups (
+          jid TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          folder TEXT NOT NULL UNIQUE,
+          trigger_pattern TEXT NOT NULL,
+          added_at TEXT NOT NULL,
+          container_config TEXT,
+          requires_trigger INTEGER DEFAULT 1,
+          is_main INTEGER DEFAULT 0,
+          review_config TEXT,
+          sdk TEXT DEFAULT 'codex',
+          model TEXT
+        );
+        CREATE TABLE router_state (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+        CREATE TABLE sessions (
+          group_folder TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL
+        );
+        CREATE TABLE task_run_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id TEXT NOT NULL,
+          run_at TEXT NOT NULL,
+          duration_ms INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          result TEXT,
+          error TEXT
+        );
+      `);
+      seed.pragma('user_version = 10');
+      seed
+        .prepare(
+          `INSERT INTO registered_groups (jid, name, folder, trigger_pattern, added_at, review_config)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          'slack-review:C0APYRWQRFH',
+          'labs-mat',
+          'slack_agent_labs_mat',
+          '@매트',
+          '2024-01-01T00:00:00.000Z',
+          '{"enabled":true,"maxRounds":3}',
+        );
+      seed
+        .prepare(
+          `INSERT INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run('msg1', 'slack-review:C0APYRWQRFH', 'u1', 'User', 'hi', '2024-01-01T00:00:00.000Z', 0);
+      seed
+        .prepare(
+          `INSERT INTO chats (jid, name, channel, is_group) VALUES (?, ?, ?, ?)`,
+        )
+        .run('slack-review:C0APYRWQRFH', 'labs-mat', 'slack', 1);
+      seed
+        .prepare(
+          `INSERT INTO scheduled_tasks (id, group_folder, chat_jid, prompt, schedule_type, schedule_value, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run('t1', 'slack_agent_labs_mat', 'slack-review:C0APYRWQRFH', 'p', 'cron', '0 0 * * *', '2024-01-01T00:00:00.000Z');
+      seed
+        .prepare(`INSERT INTO router_state (key, value) VALUES (?, ?)`)
+        .run(
+          'last_agent_timestamp',
+          '{"slack-review:C0APYRWQRFH":"2024-01-01T00:00:00.000Z","slack:C999":"2024-01-02T00:00:00.000Z"}',
+        );
+      seed.close();
+
+      vi.resetModules();
+      const { initDatabase, _closeDatabase } = await import('./db.js');
+      initDatabase();
+
+      const db = new Database(dbPath, { readonly: true });
+
+      // All slack-review: references should be gone
+      expect(
+        (db.prepare(`SELECT COUNT(*) as n FROM registered_groups WHERE jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+      ).toBe(0);
+      expect(
+        (db.prepare(`SELECT COUNT(*) as n FROM messages WHERE chat_jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+      ).toBe(0);
+      expect(
+        (db.prepare(`SELECT COUNT(*) as n FROM chats WHERE jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+      ).toBe(0);
+      expect(
+        (db.prepare(`SELECT COUNT(*) as n FROM scheduled_tasks WHERE chat_jid LIKE 'slack-review:%'`).get() as { n: number }).n,
+      ).toBe(0);
+
+      // slack-mat: should take their place
+      const regRow = db
+        .prepare(`SELECT jid, mat_config, review_config FROM registered_groups`)
+        .get() as { jid: string; mat_config: string; review_config: string };
+      expect(regRow.jid).toBe('slack-mat:C0APYRWQRFH');
+      // mat_config populated from review_config
+      expect(regRow.mat_config).toBe('{"enabled":true,"maxRounds":3}');
+      // review_config preserved (drop deferred to future migration)
+      expect(regRow.review_config).toBe('{"enabled":true,"maxRounds":3}');
+
+      const routerValue = (
+        db.prepare(`SELECT value FROM router_state WHERE key = 'last_agent_timestamp'`).get() as { value: string }
+      ).value;
+      expect(routerValue).toContain('slack-mat:C0APYRWQRFH');
+      expect(routerValue).not.toContain('slack-review:');
+      // Unrelated JIDs preserved
+      expect(routerValue).toContain('slack:C999');
+
+      db.close();
       _closeDatabase();
     } finally {
       process.chdir(repoRoot);

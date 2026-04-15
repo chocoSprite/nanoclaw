@@ -77,7 +77,7 @@ describe('getAvailableGroups', () => {
       'reg@g.us': {
         name: 'Registered',
         folder: 'registered',
-        trigger: '@Andy',
+        trigger: '@패트',
         added_at: '2024-01-01T00:00:00.000Z',
         sdk: 'codex',
       },

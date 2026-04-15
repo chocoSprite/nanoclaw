@@ -187,13 +187,13 @@ AskUserQuestion: Is this a shared phone number (personal WhatsApp) or a dedicate
 - **Dedicated number** - A separate phone/SIM for the assistant
 
 AskUserQuestion: What trigger word should activate the assistant?
-- **@Andy** - Default trigger
-- **@Claw** - Short and easy
+- **@패트** - Default trigger (primary bot)
+- **@매트** - Default trigger (mat bot)
 - **@Claude** - Match the AI name
 
 AskUserQuestion: What should the assistant call itself?
-- **Andy** - Default name
-- **Claw** - Short and easy
+- **패트** - Default primary bot name
+- **매트** - Default mat bot name
 - **Claude** - Match the AI name
 
 AskUserQuestion: Where do you want to chat with the assistant?
@@ -279,7 +279,7 @@ Tell the user:
 
 > Send a message to your registered WhatsApp chat:
 > - For self-chat / main: Any message works
-> - For groups: Use the trigger word (e.g., "@Andy hello")
+> - For groups: Use the trigger word (e.g., "@패트 hello")
 >
 > The assistant should respond within a few seconds.
 

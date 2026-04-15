@@ -111,7 +111,7 @@ import type { RegisteredGroup } from './types.js';
 const testGroup: RegisteredGroup = {
   name: 'Test Group',
   folder: 'test-group',
-  trigger: '@Andy',
+  trigger: '@패트',
   added_at: new Date().toISOString(),
   sdk: 'codex',
 };

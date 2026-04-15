@@ -40,11 +40,11 @@ export interface ContainerConfig {
   timeout?: number; // Default: 300000 (5 minutes)
 }
 
-export interface ReviewConfig {
+export interface MatConfig {
   enabled: boolean;
-  reviewJid: string; // JID of the review bot channel (e.g. "slack-review:C123...")
-  reviewFolder: string; // Group folder for the review agent
-  maxRounds: number; // Max dev→review cycles before forced stop (default: 3)
+  matJid: string; // JID of the mat bot channel (e.g. "slack-mat:C123...")
+  matFolder: string; // Group folder for the mat agent
+  maxRounds: number; // Max pat→mat cycles before forced stop (default: 3)
 }
 
 export interface RegisteredGroup {
@@ -55,7 +55,7 @@ export interface RegisteredGroup {
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
-  reviewConfig?: ReviewConfig; // Auto-review cycle config (multi-agent channels)
+  matConfig?: MatConfig; // Auto pat→mat cycle config (multi-agent channels)
   sdk: 'codex' | 'claude'; // Which AI SDK to use (default: 'codex')
   model?: string; // Model override for Claude SDK (e.g. 'claude-opus-4-6')
 }

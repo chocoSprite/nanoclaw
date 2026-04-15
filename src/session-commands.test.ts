@@ -8,14 +8,14 @@ import type { NewMessage } from './types.js';
 import type { SessionCommandDeps } from './session-commands.js';
 
 describe('extractSessionCommand', () => {
-  const trigger = /^@Andy\b/i;
+  const trigger = /^@패트(?:\s|$)/i;
 
   it('detects bare /compact', () => {
     expect(extractSessionCommand('/compact', trigger)).toBe('/compact');
   });
 
   it('detects /compact with trigger prefix', () => {
-    expect(extractSessionCommand('@Andy /compact', trigger)).toBe('/compact');
+    expect(extractSessionCommand('@패트 /compact', trigger)).toBe('/compact');
   });
 
   it('rejects /compact with extra text', () => {
@@ -89,7 +89,7 @@ function makeDeps(
   };
 }
 
-const trigger = /^@Andy\b/i;
+const trigger = /^@패트(?:\s|$)/i;
 
 describe('handleSessionCommand', () => {
   it('returns handled:false when no session command found', async () => {

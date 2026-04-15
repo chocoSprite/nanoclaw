@@ -1,5 +1,5 @@
 import {
-  ASSISTANT_NAME,
+  PAT_ASSISTANT_NAME,
   DATA_DIR,
   DEFAULT_TRIGGER,
   getTriggerPattern,
@@ -110,7 +110,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const missedMessages = getMessagesSince(
     chatJid,
     getOrRecoverCursor(chatJid),
-    ASSISTANT_NAME,
+    PAT_ASSISTANT_NAME,
     MAX_MESSAGES_PER_PROMPT,
   );
 
@@ -304,7 +304,7 @@ async function runAgent(
         groupFolder: group.folder,
         chatJid,
         isMain,
-        assistantName: ASSISTANT_NAME,
+        assistantName: PAT_ASSISTANT_NAME,
         sdk: group.sdk,
         model: resolveModel(group.sdk, group.model),
       },
@@ -369,7 +369,7 @@ async function startMessageLoop(): Promise<void> {
         const pending = getMessagesSince(
           chatJid,
           getOrRecoverCursor(chatJid),
-          ASSISTANT_NAME,
+          PAT_ASSISTANT_NAME,
           MAX_MESSAGES_PER_PROMPT,
         );
         if (pending.length === 0) continue;
@@ -434,7 +434,7 @@ function recoverPendingMessages(): void {
     const pending = getMessagesSince(
       chatJid,
       getOrRecoverCursor(chatJid),
-      ASSISTANT_NAME,
+      PAT_ASSISTANT_NAME,
       MAX_MESSAGES_PER_PROMPT,
     );
     if (pending.length > 0) {

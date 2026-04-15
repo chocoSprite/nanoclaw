@@ -47,7 +47,7 @@ This merges in:
 - `src/channels/slack.test.ts` (46 unit tests)
 - `import './slack.js'` appended to the channel barrel file `src/channels/index.ts`
 - `@slack/bolt` npm dependency in `package.json`
-- `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` in `.env.example`
+- `SLACK_PAT_BOT_TOKEN` and `SLACK_PAT_APP_TOKEN` in `.env.example`
 
 If the merge reports conflicts, resolve them by reading the conflicted files and understanding the intent of both sides.
 
@@ -81,8 +81,8 @@ Wait for the user to provide both tokens.
 Add to `.env`:
 
 ```bash
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_APP_TOKEN=xapp-your-app-token
+SLACK_PAT_BOT_TOKEN=xoxb-your-bot-token
+SLACK_PAT_APP_TOKEN=xapp-your-app-token
 ```
 
 Channels auto-enable when their credentials are present — no extra configuration needed.
@@ -123,13 +123,13 @@ The channel ID, name, and folder name are needed. Use `npx tsx setup/index.ts --
 For a main channel (responds to all messages):
 
 ```bash
-npx tsx setup/index.ts --step register -- --jid "slack:<channel-id>" --name "<channel-name>" --folder "slack_main" --trigger "@${ASSISTANT_NAME}" --channel slack --no-trigger-required --is-main
+npx tsx setup/index.ts --step register -- --jid "slack:<channel-id>" --name "<channel-name>" --folder "slack_main" --trigger "@${PAT_ASSISTANT_NAME}" --channel slack --no-trigger-required --is-main
 ```
 
 For additional channels (trigger-only):
 
 ```bash
-npx tsx setup/index.ts --step register -- --jid "slack:<channel-id>" --name "<channel-name>" --folder "slack_<channel-name>" --trigger "@${ASSISTANT_NAME}" --channel slack
+npx tsx setup/index.ts --step register -- --jid "slack:<channel-id>" --name "<channel-name>" --folder "slack_<channel-name>" --trigger "@${PAT_ASSISTANT_NAME}" --channel slack
 ```
 
 ## Phase 5: Verify
@@ -154,7 +154,7 @@ tail -f logs/nanoclaw.log
 
 ### Bot not responding
 
-1. Check `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set in `.env` AND synced to `data/env/env`
+1. Check `SLACK_PAT_BOT_TOKEN` and `SLACK_PAT_APP_TOKEN` are set in `.env` AND synced to `data/env/env`
 2. Check channel is registered: `sqlite3 store/messages.db "SELECT * FROM registered_groups WHERE jid LIKE 'slack:%'"`
 3. For non-main channels: message must include trigger pattern
 4. Service is running: `launchctl list | grep nanoclaw`
@@ -187,7 +187,7 @@ If the bot logs `missing_scope` errors:
 If the channel ID is hard to find:
 - In Slack desktop: right-click channel → **Copy link** → extract the `C...` ID from the URL
 - In Slack web: the URL shows `https://app.slack.com/client/TXXXXXXX/C0123456789`
-- Via API: `curl -s -H "Authorization: Bearer $SLACK_BOT_TOKEN" "https://slack.com/api/conversations.list" | jq '.channels[] | {id, name}'`
+- Via API: `curl -s -H "Authorization: Bearer $SLACK_PAT_BOT_TOKEN" "https://slack.com/api/conversations.list" | jq '.channels[] | {id, name}'`
 
 ## After Setup
 

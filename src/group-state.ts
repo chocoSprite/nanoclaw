@@ -15,7 +15,7 @@ import path from 'path';
 
 import { OneCLI } from '@onecli-sh/sdk';
 
-import { ASSISTANT_NAME, GROUPS_DIR, ONECLI_URL } from './config.js';
+import { PAT_ASSISTANT_NAME, GROUPS_DIR, ONECLI_URL } from './config.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -93,7 +93,7 @@ export function getOrRecoverCursor(chatJid: string): string {
   const existing = lastAgentTimestamp[chatJid];
   if (existing) return existing;
 
-  const botTs = getLastBotMessageTimestamp(chatJid, ASSISTANT_NAME);
+  const botTs = getLastBotMessageTimestamp(chatJid, PAT_ASSISTANT_NAME);
   if (botTs) {
     logger.info(
       { chatJid, recoveredFrom: botTs },
@@ -148,11 +148,7 @@ export function registerGroup(jid: string, group: RegisteredGroup): void {
       'CLAUDE.md',
     );
     if (fs.existsSync(templateFile)) {
-      let content = fs.readFileSync(templateFile, 'utf-8');
-      if (ASSISTANT_NAME !== 'Andy') {
-        content = content.replace(/^# Andy$/m, `# ${ASSISTANT_NAME}`);
-        content = content.replace(/You are Andy/g, `You are ${ASSISTANT_NAME}`);
-      }
+      const content = fs.readFileSync(templateFile, 'utf-8');
       fs.writeFileSync(groupMdFile, content);
       logger.info({ folder: group.folder }, 'Created CLAUDE.md from template');
     }

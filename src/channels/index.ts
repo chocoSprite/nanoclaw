@@ -7,7 +7,7 @@
 
 // slack
 import './slack.js';
-import './slack-review.js';
+import './slack-mat.js';
 
 // telegram
 

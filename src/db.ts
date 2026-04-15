@@ -456,7 +456,7 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     throw new Error(`Invalid group folder "${group.folder}" for JID ${jid}`);
   }
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main, review_config, sdk, model)
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main, mat_config, sdk, model)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
@@ -467,7 +467,7 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
     group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
     group.isMain ? 1 : 0,
-    group.reviewConfig ? JSON.stringify(group.reviewConfig) : null,
+    group.matConfig ? JSON.stringify(group.matConfig) : null,
     group.sdk ?? 'codex',
     group.model ?? null,
   );
@@ -483,7 +483,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     container_config: string | null;
     requires_trigger: number | null;
     is_main: number | null;
-    review_config: string | null;
+    mat_config: string | null;
     sdk: string | null;
     model: string | null;
   }>;
@@ -507,9 +507,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
       requiresTrigger:
         row.requires_trigger === null ? undefined : row.requires_trigger === 1,
       isMain: row.is_main === 1 ? true : undefined,
-      reviewConfig: row.review_config
-        ? JSON.parse(row.review_config)
-        : undefined,
+      matConfig: row.mat_config ? JSON.parse(row.mat_config) : undefined,
       sdk: (row.sdk as 'codex' | 'claude') ?? 'codex',
       model: row.model ?? undefined,
     };

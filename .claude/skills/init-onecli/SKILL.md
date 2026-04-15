@@ -159,7 +159,7 @@ Tell the user: "Migrated your Anthropic credentials from `.env` to the OneCLI Ag
 
 After handling Anthropic credentials (whether migrated or freshly registered), scan `.env` again for remaining credential variables that containers use for outbound API calls.
 
-**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the NanoClaw host process to connect to messaging platforms — they must stay in `.env`.
+**Important:** Only migrate credentials that containers use via outbound HTTPS. Channel tokens (`TELEGRAM_BOT_TOKEN`, `SLACK_PAT_BOT_TOKEN`, `SLACK_PAT_APP_TOKEN`, `SLACK_MAT_BOT_TOKEN`, `SLACK_MAT_APP_TOKEN`, `DISCORD_BOT_TOKEN`) are used by the NanoClaw host process to connect to messaging platforms — they must stay in `.env`.
 
 Known container-facing credentials:
 

@@ -21,7 +21,6 @@ interface RegisterArgs {
   channel: string;
   requiresTrigger: boolean;
   isMain: boolean;
-  assistantName: string;
 }
 
 function parseArgs(args: string[]): RegisterArgs {
@@ -33,7 +32,6 @@ function parseArgs(args: string[]): RegisterArgs {
     channel: 'whatsapp', // backward-compat: pre-refactor installs omit --channel
     requiresTrigger: true,
     isMain: false,
-    assistantName: 'Andy',
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -60,7 +58,9 @@ function parseArgs(args: string[]): RegisterArgs {
         result.isMain = true;
         break;
       case '--assistant-name':
-        result.assistantName = args[++i] || 'Andy';
+        // Deprecated no-op: assistant name is now set via PAT_ASSISTANT_NAME /
+        // MAT_ASSISTANT_NAME in .env. Accept-and-ignore keeps old scripts alive.
+        i++;
         break;
     }
   }
@@ -140,53 +140,6 @@ export async function run(args: string[]): Promise<void> {
     }
   }
 
-  // Update assistant name in CLAUDE.md files if different from default
-  let nameUpdated = false;
-  if (parsed.assistantName !== 'Andy') {
-    logger.info(
-      { from: 'Andy', to: parsed.assistantName },
-      'Updating assistant name',
-    );
-
-    const groupsDir = path.join(projectRoot, 'groups');
-    const mdFiles = fs
-      .readdirSync(groupsDir)
-      .map((d) => path.join(groupsDir, d, 'CLAUDE.md'))
-      .filter((f) => fs.existsSync(f));
-
-    for (const mdFile of mdFiles) {
-      if (fs.existsSync(mdFile)) {
-        let content = fs.readFileSync(mdFile, 'utf-8');
-        content = content.replace(/^# Andy$/m, `# ${parsed.assistantName}`);
-        content = content.replace(
-          /You are Andy/g,
-          `You are ${parsed.assistantName}`,
-        );
-        fs.writeFileSync(mdFile, content);
-        logger.info({ file: mdFile }, 'Updated CLAUDE.md');
-      }
-    }
-
-    // Update .env
-    const envFile = path.join(projectRoot, '.env');
-    if (fs.existsSync(envFile)) {
-      let envContent = fs.readFileSync(envFile, 'utf-8');
-      if (envContent.includes('ASSISTANT_NAME=')) {
-        envContent = envContent.replace(
-          /^ASSISTANT_NAME=.*$/m,
-          `ASSISTANT_NAME="${parsed.assistantName}"`,
-        );
-      } else {
-        envContent += `\nASSISTANT_NAME="${parsed.assistantName}"`;
-      }
-      fs.writeFileSync(envFile, envContent);
-    } else {
-      fs.writeFileSync(envFile, `ASSISTANT_NAME="${parsed.assistantName}"\n`);
-    }
-    logger.info('Set ASSISTANT_NAME in .env');
-    nameUpdated = true;
-  }
-
   emitStatus('REGISTER_CHANNEL', {
     JID: parsed.jid,
     NAME: parsed.name,
@@ -194,8 +147,6 @@ export async function run(args: string[]): Promise<void> {
     CHANNEL: parsed.channel,
     TRIGGER: parsed.trigger,
     REQUIRES_TRIGGER: parsed.requiresTrigger,
-    ASSISTANT_NAME: parsed.assistantName,
-    NAME_UPDATED: nameUpdated,
     STATUS: 'success',
     LOG: 'logs/setup.log',
   });

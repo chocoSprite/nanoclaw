@@ -7,7 +7,7 @@ vi.mock('./registry.js', () => ({ registerChannel: vi.fn() }));
 
 // Mock config
 vi.mock('../config.js', () => ({
-  ASSISTANT_NAME: 'Jonesy',
+  PAT_ASSISTANT_NAME: 'Jonesy',
   TRIGGER_PATTERN: /^@Jonesy\b/i,
   DATA_DIR: '/tmp/nanoclaw-test',
 }));
@@ -80,8 +80,8 @@ vi.mock('@slack/bolt', () => ({
 // Mock env
 vi.mock('../env.js', () => ({
   readEnvFile: vi.fn().mockReturnValue({
-    SLACK_BOT_TOKEN: 'xoxb-test-token',
-    SLACK_APP_TOKEN: 'xapp-test-token',
+    SLACK_PAT_BOT_TOKEN: 'xoxb-test-token',
+    SLACK_PAT_APP_TOKEN: 'xapp-test-token',
   }),
 }));
 
@@ -834,25 +834,25 @@ describe('SlackChannel', () => {
   // --- Constructor error handling ---
 
   describe('constructor', () => {
-    it('throws when SLACK_BOT_TOKEN is missing', () => {
+    it('throws when SLACK_PAT_BOT_TOKEN is missing', () => {
       vi.mocked(readEnvFile).mockReturnValueOnce({
-        SLACK_BOT_TOKEN: '',
-        SLACK_APP_TOKEN: 'xapp-test-token',
+        SLACK_PAT_BOT_TOKEN: '',
+        SLACK_PAT_APP_TOKEN: 'xapp-test-token',
       });
 
       expect(() => new SlackChannel(createTestOpts())).toThrow(
-        'SLACK_BOT_TOKEN and SLACK_APP_TOKEN must be set in .env',
+        'SLACK_PAT_BOT_TOKEN and SLACK_PAT_APP_TOKEN must be set in .env',
       );
     });
 
-    it('throws when SLACK_APP_TOKEN is missing', () => {
+    it('throws when SLACK_PAT_APP_TOKEN is missing', () => {
       vi.mocked(readEnvFile).mockReturnValueOnce({
-        SLACK_BOT_TOKEN: 'xoxb-test-token',
-        SLACK_APP_TOKEN: '',
+        SLACK_PAT_BOT_TOKEN: 'xoxb-test-token',
+        SLACK_PAT_APP_TOKEN: '',
       });
 
       expect(() => new SlackChannel(createTestOpts())).toThrow(
-        'SLACK_BOT_TOKEN and SLACK_APP_TOKEN must be set in .env',
+        'SLACK_PAT_BOT_TOKEN and SLACK_PAT_APP_TOKEN must be set in .env',
       );
     });
   });

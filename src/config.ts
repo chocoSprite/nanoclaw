@@ -6,14 +6,17 @@ import { isValidTimezone } from './timezone.js';
 
 // Read config values from .env (falls back to process.env).
 const envConfig = readEnvFile([
-  'ASSISTANT_NAME',
+  'PAT_ASSISTANT_NAME',
+  'MAT_ASSISTANT_NAME',
   'ASSISTANT_HAS_OWN_NUMBER',
   'ONECLI_URL',
   'TZ',
 ]);
 
-export const ASSISTANT_NAME =
-  process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Andy';
+export const PAT_ASSISTANT_NAME =
+  process.env.PAT_ASSISTANT_NAME || envConfig.PAT_ASSISTANT_NAME || '패트';
+export const MAT_ASSISTANT_NAME =
+  process.env.MAT_ASSISTANT_NAME || envConfig.MAT_ASSISTANT_NAME || '매트';
 export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER ||
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
@@ -74,7 +77,7 @@ export function buildTriggerPattern(trigger: string): RegExp {
   return new RegExp(`^${escapeRegex(trigger.trim())}(?:\\s|$)`, 'i');
 }
 
-export const DEFAULT_TRIGGER = `@${ASSISTANT_NAME}`;
+export const DEFAULT_TRIGGER = `@${PAT_ASSISTANT_NAME}`;
 
 export function getTriggerPattern(trigger?: string): RegExp {
   const normalizedTrigger = trigger?.trim();

@@ -109,8 +109,8 @@ export async function run(_args: string[]): Promise<void> {
   // 4. Check channel auth (detect configured channels by credentials)
   const envVars = readEnvFile([
     'TELEGRAM_BOT_TOKEN',
-    'SLACK_BOT_TOKEN',
-    'SLACK_APP_TOKEN',
+    'SLACK_PAT_BOT_TOKEN',
+    'SLACK_PAT_APP_TOKEN',
     'DISCORD_BOT_TOKEN',
   ]);
 
@@ -127,8 +127,8 @@ export async function run(_args: string[]): Promise<void> {
     channelAuth.telegram = 'configured';
   }
   if (
-    (process.env.SLACK_BOT_TOKEN || envVars.SLACK_BOT_TOKEN) &&
-    (process.env.SLACK_APP_TOKEN || envVars.SLACK_APP_TOKEN)
+    (process.env.SLACK_PAT_BOT_TOKEN || envVars.SLACK_PAT_BOT_TOKEN) &&
+    (process.env.SLACK_PAT_APP_TOKEN || envVars.SLACK_PAT_APP_TOKEN)
   ) {
     channelAuth.slack = 'configured';
   }

@@ -60,7 +60,7 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
     );
     expect(messages).toHaveLength(1);
     expect(messages[0].id).toBe('msg-1');
@@ -84,7 +84,7 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
     );
     expect(messages).toHaveLength(0);
   });
@@ -106,7 +106,7 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
     );
     expect(messages).toHaveLength(0);
   });
@@ -135,7 +135,7 @@ describe('storeMessage', () => {
     const messages = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
     );
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe('updated');
@@ -188,7 +188,7 @@ describe('getMessagesSince', () => {
     const msgs = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:02.000Z',
-      'Andy',
+      '패트',
     );
     // Should exclude m1, m2 (before/at timestamp), m3 (is_from_me bot)
     expect(msgs).toHaveLength(1);
@@ -199,14 +199,14 @@ describe('getMessagesSince', () => {
     const msgs = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
     );
     const botMsgs = msgs.filter((m) => m.content === 'bot reply');
     expect(botMsgs).toHaveLength(0);
   });
 
   it('returns all non-bot messages when sinceTimestamp is empty', () => {
-    const msgs = getMessagesSince('group@g.us', '', 'Andy');
+    const msgs = getMessagesSince('group@g.us', '', '패트');
     // 3 user messages (own bot message excluded via is_from_me)
     expect(msgs).toHaveLength(3);
   });
@@ -236,11 +236,11 @@ describe('getMessagesSince', () => {
     });
 
     // Recover cursor from the last bot message (m3 from beforeEach)
-    const recovered = getLastBotMessageTimestamp('group@g.us', 'Andy');
+    const recovered = getLastBotMessageTimestamp('group@g.us', '패트');
     expect(recovered).toBe('2024-01-01T00:00:03.000Z');
 
     // Using recovered cursor: only gets messages after the bot reply
-    const msgs = getMessagesSince('group@g.us', recovered!, 'Andy', 10);
+    const msgs = getMessagesSince('group@g.us', recovered!, '패트', 10);
     // m4 (third, 00:00:04) + new-1 — skips all 50 old messages and m1/m2
     expect(msgs).toHaveLength(2);
     expect(msgs[0].content).toBe('third');
@@ -260,11 +260,11 @@ describe('getMessagesSince', () => {
       });
     }
 
-    const recovered = getLastBotMessageTimestamp('group@g.us', 'Andy');
+    const recovered = getLastBotMessageTimestamp('group@g.us', '패트');
     expect(recovered).toBe('2024-01-01T00:00:03.000Z');
 
     // With limit=10, only the 10 most recent are returned
-    const msgs = getMessagesSince('group@g.us', recovered!, 'Andy', 10);
+    const msgs = getMessagesSince('group@g.us', recovered!, '패트', 10);
     expect(msgs).toHaveLength(10);
     // Most recent 10: pending-21 through pending-30
     expect(msgs[0].content).toBe('pending message 21');
@@ -285,11 +285,11 @@ describe('getMessagesSince', () => {
       });
     }
 
-    const recovered = getLastBotMessageTimestamp('fresh@g.us', 'Andy');
+    const recovered = getLastBotMessageTimestamp('fresh@g.us', '패트');
     expect(recovered).toBeUndefined();
 
     // No cursor → sinceTimestamp = '' but limit caps the result
-    const msgs = getMessagesSince('fresh@g.us', '', 'Andy', 10);
+    const msgs = getMessagesSince('fresh@g.us', '', '패트', 10);
     expect(msgs).toHaveLength(10);
 
     const prompt = formatMessages(msgs, 'Asia/Jerusalem');
@@ -304,13 +304,13 @@ describe('getMessagesSince', () => {
       chat_jid: 'group@g.us',
       sender: 'Bot@s.whatsapp.net',
       sender_name: 'Bot',
-      content: 'Andy: old bot reply',
+      content: '패트: old bot reply',
       timestamp: '2024-01-01T00:00:05.000Z',
     });
     const msgs = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:04.000Z',
-      'Andy',
+      '패트',
     );
     expect(msgs).toHaveLength(0);
   });
@@ -363,7 +363,7 @@ describe('getNewMessages', () => {
     const { messages, newTimestamp } = getNewMessages(
       ['group1@g.us', 'group2@g.us'],
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
     );
     // Excludes bot message, returns 3 user messages
     expect(messages).toHaveLength(3);
@@ -374,7 +374,7 @@ describe('getNewMessages', () => {
     const { messages } = getNewMessages(
       ['group1@g.us', 'group2@g.us'],
       '2024-01-01T00:00:02.000Z',
-      'Andy',
+      '패트',
     );
     // Only g1 msg2 (after ts, not bot)
     expect(messages).toHaveLength(1);
@@ -382,7 +382,7 @@ describe('getNewMessages', () => {
   });
 
   it('returns empty for no registered groups', () => {
-    const { messages, newTimestamp } = getNewMessages([], '', 'Andy');
+    const { messages, newTimestamp } = getNewMessages([], '', '패트');
     expect(messages).toHaveLength(0);
     expect(newTimestamp).toBe('');
   });
@@ -503,7 +503,7 @@ describe('message query LIMIT', () => {
     const { messages, newTimestamp } = getNewMessages(
       ['group@g.us'],
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
       3,
     );
     expect(messages).toHaveLength(3);
@@ -519,7 +519,7 @@ describe('message query LIMIT', () => {
     const messages = getMessagesSince(
       'group@g.us',
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
       3,
     );
     expect(messages).toHaveLength(3);
@@ -532,7 +532,7 @@ describe('message query LIMIT', () => {
     const { messages } = getNewMessages(
       ['group@g.us'],
       '2024-01-01T00:00:00.000Z',
-      'Andy',
+      '패트',
       50,
     );
     expect(messages).toHaveLength(10);
@@ -546,7 +546,7 @@ describe('registered group isMain', () => {
     setRegisteredGroup('main@s.whatsapp.net', {
       name: 'Main Chat',
       folder: 'whatsapp_main',
-      trigger: '@Andy',
+      trigger: '@패트',
       added_at: '2024-01-01T00:00:00.000Z',
       isMain: true,
       sdk: 'codex',
@@ -563,7 +563,7 @@ describe('registered group isMain', () => {
     setRegisteredGroup('group@g.us', {
       name: 'Family Chat',
       folder: 'whatsapp_family-chat',
-      trigger: '@Andy',
+      trigger: '@패트',
       added_at: '2024-01-01T00:00:00.000Z',
       sdk: 'codex',
     });
