@@ -15,7 +15,7 @@ import path from 'path';
 
 import { OneCLI } from '@onecli-sh/sdk';
 
-import { PAT_ASSISTANT_NAME, GROUPS_DIR, ONECLI_URL } from './config.js';
+import { getGroupBotName, GROUPS_DIR, ONECLI_URL } from './config.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -93,7 +93,7 @@ export function getOrRecoverCursor(chatJid: string): string {
   const existing = lastAgentTimestamp[chatJid];
   if (existing) return existing;
 
-  const botTs = getLastBotMessageTimestamp(chatJid, PAT_ASSISTANT_NAME);
+  const botTs = getLastBotMessageTimestamp(chatJid, getGroupBotName(chatJid));
   if (botTs) {
     logger.info(
       { chatJid, recoveredFrom: botTs },

@@ -17,6 +17,18 @@ export const PAT_ASSISTANT_NAME =
   process.env.PAT_ASSISTANT_NAME || envConfig.PAT_ASSISTANT_NAME || '패트';
 export const MAT_ASSISTANT_NAME =
   process.env.MAT_ASSISTANT_NAME || envConfig.MAT_ASSISTANT_NAME || '매트';
+
+/**
+ * Return the assistant name of the bot that owns a given chat JID.
+ * Used by cursor recovery and message filters so mat-lane queries
+ * match on 매트:-prefixed / sender_name='매트' rows instead of '패트'.
+ * JID prefixes: 'slack-mat:' → mat bot; anything else → pat bot.
+ */
+export function getGroupBotName(chatJid: string): string {
+  return chatJid.startsWith('slack-mat:')
+    ? MAT_ASSISTANT_NAME
+    : PAT_ASSISTANT_NAME;
+}
 export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER ||
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';

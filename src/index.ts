@@ -2,6 +2,7 @@ import {
   PAT_ASSISTANT_NAME,
   DATA_DIR,
   DEFAULT_TRIGGER,
+  getGroupBotName,
   getTriggerPattern,
   IDLE_TIMEOUT,
   MAX_MESSAGES_PER_PROMPT,
@@ -110,7 +111,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   const missedMessages = getMessagesSince(
     chatJid,
     getOrRecoverCursor(chatJid),
-    PAT_ASSISTANT_NAME,
+    getGroupBotName(chatJid),
     MAX_MESSAGES_PER_PROMPT,
   );
 
@@ -369,7 +370,7 @@ async function startMessageLoop(): Promise<void> {
         const pending = getMessagesSince(
           chatJid,
           getOrRecoverCursor(chatJid),
-          PAT_ASSISTANT_NAME,
+          getGroupBotName(chatJid),
           MAX_MESSAGES_PER_PROMPT,
         );
         if (pending.length === 0) continue;
@@ -434,7 +435,7 @@ function recoverPendingMessages(): void {
     const pending = getMessagesSince(
       chatJid,
       getOrRecoverCursor(chatJid),
-      PAT_ASSISTANT_NAME,
+      getGroupBotName(chatJid),
       MAX_MESSAGES_PER_PROMPT,
     );
     if (pending.length > 0) {
