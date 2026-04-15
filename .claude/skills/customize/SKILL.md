@@ -1,6 +1,6 @@
 ---
 name: customize
-description: Add new capabilities or modify NanoClaw behavior. Use when user wants to add channels (Telegram, Slack, email input), change triggers, add integrations, modify the router, or make any other customizations. This is an interactive skill that asks questions to understand what the user wants.
+description: Add new capabilities or modify NanoClaw behavior. Use when user wants to add channels, change triggers, add integrations, modify the router, or make any other customizations. This is an interactive skill that asks questions to understand what the user wants.
 ---
 
 # NanoClaw Customization
@@ -31,7 +31,7 @@ This skill helps users add capabilities or modify behavior. Use AskUserQuestion 
 
 ## Common Customization Patterns
 
-### Adding a New Input Channel (e.g., Discord, Email)
+### Adding a New Input Channel
 
 Questions to ask:
 - Which channel?
@@ -102,10 +102,10 @@ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 
 ## Example Interaction
 
-User: "Add Discord as an input channel"
+User: "Add a new input channel"
 
-1. Ask: "Should Discord use the same @패트 trigger, or a different one?"
-2. Ask: "Should Discord messages create separate conversation contexts, or share with existing Slack groups?"
-3. Create `src/channels/discord.ts` implementing the `Channel` interface (see `src/channels/slack.ts`)
-4. Register via `registerChannel(...)` in module load, import from `src/channels/index.ts`
+1. Ask: "Which channel? Same `@패트` trigger, or a different one?"
+2. Ask: "Should messages create separate conversation contexts, or share with existing Slack groups?"
+3. Create `src/channels/{name}.ts` implementing the `Channel` interface (see `src/channels/slack.ts`)
+4. Register via `registerChannel(...)` at module load, import from `src/channels/index.ts`
 5. Tell user how to authenticate and test

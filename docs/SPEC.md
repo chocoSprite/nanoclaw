@@ -86,18 +86,16 @@ A personal Claude assistant with multi-channel support, persistent memory per co
 
 ## Architecture: Channel System
 
-The core ships with no channels built in — each channel (WhatsApp, Telegram, Slack, Discord, Gmail) is installed as a [Claude Code skill](https://code.claude.com/docs/en/skills) that adds the channel code to your fork. Channels self-register at startup; installed channels with missing credentials emit a WARN log and are skipped.
+This fork ships with Slack and Gmail channels. Each channel lives under `src/channels/` and self-registers at startup; channels with missing credentials emit a WARN log and are skipped.
 
 ### System Diagram
 
 ```mermaid
 graph LR
     subgraph Channels["Channels"]
-        WA[WhatsApp]
-        TG[Telegram]
         SL[Slack]
-        DC[Discord]
-        New["Other Channel (Signal, Gmail...)"]
+        GM[Gmail]
+        New["Other Channel"]
     end
 
     subgraph Orchestrator["Orchestrator — index.ts"]
@@ -115,7 +113,7 @@ graph LR
     end
 
     %% Flow
-    WA & TG & SL & DC & New -->|onMessage| ML
+    SL & GM & New -->|onMessage| ML
     ML --> GQ
     GQ -->|concurrency| CR
     CR --> LC
@@ -177,27 +175,26 @@ interface Channel {
 
 Channels self-register using a barrel-import pattern:
 
-1. Each channel skill adds a file to `src/channels/` (e.g. `whatsapp.ts`, `telegram.ts`) that calls `registerChannel()` at module load time:
+1. Each channel file in `src/channels/` (e.g. `slack.ts`, `slack-mat.ts`) calls `registerChannel()` at module load time:
 
    ```typescript
-   // src/channels/whatsapp.ts
+   // src/channels/slack.ts
    import { registerChannel, ChannelOpts } from './registry.js';
 
-   export class WhatsAppChannel implements Channel { /* ... */ }
+   export class SlackChannel implements Channel { /* ... */ }
 
-   registerChannel('whatsapp', (opts: ChannelOpts) => {
+   registerChannel('slack', (opts: ChannelOpts) => {
      // Return null if credentials are missing
-     if (!existsSync(authPath)) return null;
-     return new WhatsAppChannel(opts);
+     if (!process.env.SLACK_PAT_BOT_TOKEN) return null;
+     return new SlackChannel(opts);
    });
    ```
 
 2. The barrel file `src/channels/index.ts` imports all channel modules, triggering registration:
 
    ```typescript
-   import './whatsapp.js';
-   import './telegram.js';
-   // ... each skill adds its import here
+   import './slack.js';
+   import './slack-mat.js';
    ```
 
 3. At startup, the orchestrator (`src/index.ts`) loops through registered channels and connects whichever ones return a valid instance:
@@ -226,14 +223,14 @@ Channels self-register using a barrel-import pattern:
 
 ### Adding a New Channel
 
-To add a new channel, contribute a skill to `.claude/skills/add-<name>/` that:
+To add a new channel:
 
-1. Adds a `src/channels/<name>.ts` file implementing the `Channel` interface
-2. Calls `registerChannel(name, factory)` at module load
-3. Returns `null` from the factory if credentials are missing
-4. Adds an import line to `src/channels/index.ts`
+1. Add a `src/channels/<name>.ts` file implementing the `Channel` interface
+2. Call `registerChannel(name, factory)` at module load
+3. Return `null` from the factory if credentials are missing
+4. Add an import line to `src/channels/index.ts`
 
-See existing skills (`/add-slack`, `/add-gmail`) for the pattern.
+See `src/channels/slack.ts` for the reference implementation.
 
 ---
 
@@ -295,7 +292,7 @@ nanoclaw/
 │
 ├── groups/
 │   ├── CLAUDE.md                  # Global memory (all groups read this)
-│   ├── {channel}_main/             # Main control channel (e.g., whatsapp_main/)
+│   ├── slack_main/                 # Main control channel
 │   │   ├── CLAUDE.md              # Main channel memory
 │   │   └── logs/                  # Task execution logs
 │   └── {channel}_{group-name}/    # Per-group folders (created on registration)
@@ -304,7 +301,6 @@ nanoclaw/
 │       └── *.md                   # Files created by the agent
 │
 ├── store/                         # Local data (gitignored)
-│   ├── auth/                      # WhatsApp authentication state
 │   └── messages.db                # SQLite database (messages, chats, scheduled_tasks, task_run_logs, registered_groups, sessions, router_state)
 │
 ├── data/                          # Application state (gitignored)
@@ -358,9 +354,9 @@ export const TRIGGER_PATTERN = new RegExp(`^@${PAT_ASSISTANT_NAME}(?:\\s|$)`, 'i
 Groups can have additional directories mounted via `containerConfig` in the SQLite `registered_groups` table (stored as JSON in the `container_config` column). Example registration:
 
 ```typescript
-setRegisteredGroup("1234567890@g.us", {
+setRegisteredGroup("slack:C0123456789", {
   name: "Dev Team",
-  folder: "whatsapp_dev-team",
+  folder: "slack_dev-team_pat",
   trigger: "@패트",
   added_at: new Date().toISOString(),
   containerConfig: {
@@ -376,7 +372,7 @@ setRegisteredGroup("1234567890@g.us", {
 });
 ```
 
-Folder names follow the convention `{channel}_{group-name}` (e.g., `whatsapp_family-chat`, `telegram_dev-team`). The main group has `isMain: true` set during registration.
+Folder names follow the convention `{channel}_{group-name}_{bot}` (e.g., `slack_family-chat_pat`, `slack_dev-team_mat`). The main group has `isMain: true` set during registration.
 
 Additional mounts appear at `/workspace/extra/{containerPath}` inside the container.
 
@@ -474,7 +470,7 @@ Sessions enable conversation continuity - Claude remembers what you talked about
 1. User sends a message via any connected channel
    │
    ▼
-2. Channel receives message (e.g. Baileys for WhatsApp, Bot API for Telegram)
+2. Channel receives message (e.g. Bolt Socket Mode for Slack, IMAP/Gmail API for Gmail)
    │
    ▼
 3. Message stored in SQLite (store/messages.db)
@@ -726,7 +722,7 @@ All agents run inside containers (lightweight Linux VMs), providing:
 
 ### Prompt Injection Risk
 
-WhatsApp messages could contain malicious instructions attempting to manipulate Claude's behavior.
+Inbound channel messages could contain malicious instructions attempting to manipulate Claude's behavior.
 
 **Mitigations:**
 - Container isolation limits blast radius
@@ -747,7 +743,8 @@ WhatsApp messages could contain malicious instructions attempting to manipulate 
 | Credential | Storage Location | Notes |
 |------------|------------------|-------|
 | Claude CLI Auth | data/sessions/{group}/.claude/ | Per-group isolation, mounted to /home/node/.claude/ |
-| WhatsApp Session | store/auth/ | Auto-created, persists ~20 days |
+| Slack tokens | `.env` (SLACK_PAT_*, SLACK_MAT_*) | Copied to `data/env/env` for container mount |
+| Gmail OAuth | `~/.gmail-mcp/credentials.json` | Mounted into the container read-only |
 
 ### File Permissions
 
@@ -769,7 +766,6 @@ chmod 700 groups/
 | "Claude Code process exited with code 1" | Session mount path wrong | Ensure mount is to `/home/node/.claude/` not `/root/.claude/` |
 | Session not continuing | Session ID not saved | Check SQLite: `sqlite3 store/messages.db "SELECT * FROM sessions"` |
 | Session not continuing | Mount path mismatch | Container user is `node` with HOME=/home/node; sessions must be at `/home/node/.claude/` |
-| "QR code expired" | WhatsApp session expired | Delete store/auth/ and restart |
 | "No groups registered" | Haven't added groups | Use `@패트 add group "Name"` in main |
 
 ### Log Location

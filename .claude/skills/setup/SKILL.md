@@ -11,45 +11,6 @@ Run setup steps automatically. Only pause when user action is required (channel 
 
 **UX Note:** Use `AskUserQuestion` for multiple-choice questions only (e.g. "Docker or Apple Container?", "which channels?"). Do NOT use it when free-text input is needed (e.g. phone numbers, tokens, paths) — just ask the question in plain text and wait for the user's reply.
 
-## 0. Git & Fork Setup
-
-Check the git remote configuration to ensure the user has a fork and upstream is configured.
-
-Run:
-- `git remote -v`
-
-**Case A — `origin` points to `qwibitai/nanoclaw` (user cloned directly):**
-
-The user cloned instead of forking. AskUserQuestion: "You cloned NanoClaw directly. We recommend forking so you can push your customizations. Would you like to set up a fork?"
-- Fork now (recommended) — walk them through it
-- Continue without fork — they'll only have local changes
-
-If fork: instruct the user to fork `qwibitai/nanoclaw` on GitHub (they need to do this in their browser), then ask them for their GitHub username. Run:
-```bash
-git remote rename origin upstream
-git remote add origin https://github.com/<their-username>/nanoclaw.git
-git push --force origin main
-```
-Verify with `git remote -v`.
-
-If continue without fork: add upstream so they can still pull updates:
-```bash
-git remote add upstream https://github.com/qwibitai/nanoclaw.git
-```
-
-**Case B — `origin` points to user's fork, no `upstream` remote:**
-
-Add upstream:
-```bash
-git remote add upstream https://github.com/qwibitai/nanoclaw.git
-```
-
-**Case C — both `origin` (user's fork) and `upstream` (qwibitai) exist:**
-
-Already configured. Continue.
-
-**Verify:** `git remote -v` should show `origin` → user's repo, `upstream` → `qwibitai/nanoclaw.git`.
-
 ## 1. Bootstrap (Node.js + Dependencies)
 
 Run `bash setup.sh` and parse the status block.
@@ -66,7 +27,7 @@ Run `bash setup.sh` and parse the status block.
 
 Run `npx tsx setup/index.ts --step environment` and parse the status block.
 
-- If HAS_AUTH=true → WhatsApp is already configured, note for step 5
+- If HAS_AUTH=true → a channel is already authenticated, note for step 5
 - If HAS_REGISTERED_GROUPS=true → note existing config, offer to skip or reconfigure
 - Record APPLE_CONTAINER and DOCKER values for step 3
 
@@ -211,13 +172,11 @@ Verify the proxy starts: `npm run dev` should show "Credential proxy listening" 
 
 ## 5. Set Up Channels
 
-AskUserQuestion (multiSelect): Which messaging channels do you want to enable?
-- WhatsApp (authenticates via QR code or pairing code)
-- Telegram (authenticates via bot token from @BotFather)
+AskUserQuestion (multiSelect): Which channels do you want to enable?
 - Slack (authenticates via Slack app with Socket Mode)
-- Discord (authenticates via Discord bot token)
+- Gmail (Google OAuth)
 
-**Delegate to each selected channel's own skill.** Each channel skill handles its own code installation, authentication, registration, and JID resolution. This avoids duplicating channel-specific logic and ensures JIDs are always correct.
+**Delegate to each selected channel's own skill.** Each channel skill handles its own authentication, registration, and JID resolution.
 
 For each selected channel, invoke its skill:
 
@@ -225,13 +184,12 @@ For each selected channel, invoke its skill:
 - **Gmail:** Invoke `/add-gmail`
 
 Each skill will:
-1. Install the channel code (via `git merge` of the skill branch)
-2. Collect credentials/tokens and write to `.env`
-3. Authenticate (WhatsApp QR/pairing, or verify token-based connection)
-4. Register the chat with the correct JID format
-5. Build and verify
+1. Collect credentials/tokens and write to `.env`
+2. Verify token-based connection
+3. Register the chat with the correct JID format
+4. Build and verify
 
-**After all channel skills complete**, install dependencies and rebuild — channel merges may introduce new packages:
+**After all channel skills complete**, install dependencies and rebuild:
 
 ```bash
 npm install && npm run build
@@ -298,12 +256,6 @@ Tell user to test: send a message in their registered chat. Show: `tail -f logs/
 
 **No response to messages:** Check trigger pattern. Main channel doesn't need prefix. Check DB: `npx tsx setup/index.ts --step verify`. Check `logs/nanoclaw.log`.
 
-**Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. For WhatsApp: check `store/auth/creds.json` exists. For token-based channels: check token values in `.env`. Restart the service after any `.env` change.
+**Channel not connecting:** Verify the channel's credentials are set in `.env`. Channels auto-enable when their credentials are present. Check token values in `.env` and restart the service after any `.env` change.
 
 **Unload service:** macOS: `launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist` | Linux: `systemctl --user stop nanoclaw`
-
-
-## 9. Diagnostics
-
-1. Use the Read tool to read `.claude/skills/setup/diagnostics.md`.
-2. Follow every step in that file before completing setup.

@@ -1,6 +1,6 @@
 ---
 name: add-slack
-description: Add Slack as a channel. Can replace WhatsApp entirely or run alongside it. Uses Socket Mode (no public URL needed).
+description: Add Slack as a channel. Uses Socket Mode (no public URL needed).
 ---
 
 # Add Slack Channel
@@ -195,7 +195,7 @@ The Slack channel supports:
 - **Public channels** — Bot must be added to the channel
 - **Private channels** — Bot must be invited to the channel
 - **Direct messages** — Users can DM the bot directly
-- **Multi-channel** — Can run alongside WhatsApp or other channels (auto-enabled by credentials)
+- **Multi-channel** — Can run alongside other channels (auto-enabled by credentials)
 
 ## Known Limitations
 
