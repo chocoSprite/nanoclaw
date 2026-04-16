@@ -11,34 +11,6 @@ Both timers fire at the same time, so containers always exit via hard SIGKILL (c
 ### 3. Cursor advanced before agent succeeds
 `processGroupMessages` advances `lastAgentTimestamp` before the agent runs. If the container times out, retries find no messages (cursor already past them). Messages are permanently lost on timeout.
 
-### 4. Kubernetes image garbage collection deletes nanoclaw-agent image
-
-**Symptoms**: `Container exited with code 125: pull access denied for nanoclaw-agent` — the container image disappears overnight or after a few hours, even though you just built it.
-
-**Cause**: If your container runtime has Kubernetes enabled (Rancher Desktop enables it by default), the kubelet runs image garbage collection when disk usage exceeds 85%. NanoClaw containers are ephemeral (run and exit), so `nanoclaw-agent:latest` is never protected by a running container. The kubelet sees it as unused and deletes it — often overnight when no messages are being processed. Other images (docker-compose services) survive because they have long-running containers referencing them.
-
-**Fix**: Disable Kubernetes if you don't need it:
-```bash
-# Rancher Desktop
-rdctl set --kubernetes-enabled=false
-
-# Then rebuild the container image
-./container/build.sh
-```
-
-**Diagnosis**: Check the k3s log for image GC activity:
-```bash
-grep -i "nanoclaw" ~/Library/Logs/rancher-desktop/k3s.log
-# Look for: "Removing image to free bytes" with the nanoclaw-agent image ID
-```
-
-Check NanoClaw logs for image status:
-```bash
-grep -E "image found|image NOT found|image missing" logs/nanoclaw.log
-```
-
-If you need Kubernetes enabled, set `CONTAINER_IMAGE` to an image stored in a registry that the kubelet won't GC, or raise the GC thresholds.
-
 ## Quick Status Check
 
 ```bash
@@ -47,18 +19,15 @@ launchctl list | grep nanoclaw
 # Expected: PID  0  com.nanoclaw (PID = running, "-" = not running, non-zero exit = crashed)
 
 # 2. Any running containers?
-docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
+container list 2>/dev/null | grep nanoclaw
 
-# 3. Any stopped/orphaned containers?
-docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | grep nanoclaw
-
-# 4. Recent errors in service log?
+# 3. Recent errors in service log?
 grep -E 'ERROR|WARN' logs/nanoclaw.log | tail -20
 
-# 5. Are channels connected? (look for last connection event)
+# 4. Are channels connected? (look for last connection event)
 grep -E 'Connected|Connection closed|connection.*close|channel.*ready' logs/nanoclaw.log | tail -5
 
-# 6. Are groups loaded?
+# 5. Are groups loaded?
 grep 'groupCount' logs/nanoclaw.log | tail -3
 ```
 
@@ -134,21 +103,7 @@ cat ~/.config/nanoclaw/mount-allowlist.json
 sqlite3 store/messages.db "SELECT name, container_config FROM registered_groups;"
 
 # Test-run a container to check mounts (dry run)
-# Replace <group-folder> with the group's folder name
-docker run -i --rm --entrypoint ls nanoclaw-agent:latest /workspace/extra/
-```
-
-## Channel Auth Issues
-
-```bash
-# Check if QR code was requested (means auth expired)
-grep 'QR\|authentication required\|qr' logs/nanoclaw.log | tail -5
-
-# Check auth files exist
-ls -la store/auth/
-
-# Re-authenticate if needed
-npm run auth
+container run --rm --entrypoint ls nanoclaw-agent:latest /workspace/extra/
 ```
 
 ## Service Management

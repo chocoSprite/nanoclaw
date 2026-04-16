@@ -78,7 +78,6 @@ Real API credentials **never enter containers**. NanoClaw uses [OneCLI's Agent V
 Each NanoClaw group gets its own OneCLI agent identity. This allows different credential policies per group (e.g. your sales agent vs. support agent). OneCLI supports rate limits, and time-bound access and approval flows are on the roadmap.
 
 **NOT Mounted:**
-- Channel auth sessions (`store/auth/`) — host only
 - Mount allowlist — external, never mounted
 - Any credentials matching blocked patterns
 - `.env` is shadowed with `/dev/null` in the project root mount
