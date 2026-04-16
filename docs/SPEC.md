@@ -78,7 +78,8 @@ A personal Claude assistant with multi-channel support, persistent memory per co
 | Channel System | Channel registry (`src/channels/registry.ts`) | Channels self-register at startup |
 | Message Storage | SQLite (better-sqlite3) | Store messages for polling |
 | Container Runtime | Containers (Linux VMs) | Isolated environments for agent execution |
-| Agent | @anthropic-ai/claude-agent-sdk (0.2.29) | Run Claude with tools and MCP servers |
+| Agent CLI | Claude Code CLI / Codex CLI (installed in container image) | Spawned per turn by `container-runner`; choice per lane |
+| Secret Proxy | OneCLI gateway (`@onecli-sh/sdk`) | Injects API keys/tokens into containers at request time |
 | Browser Automation | agent-browser + Chromium | Web interaction and screenshots |
 | Runtime | Node.js 20+ | Host process for routing and scheduling |
 
@@ -86,15 +87,15 @@ A personal Claude assistant with multi-channel support, persistent memory per co
 
 ## Architecture: Channel System
 
-This fork ships with Slack and Gmail channels. Each channel lives under `src/channels/` and self-registers at startup; channels with missing credentials emit a WARN log and are skipped.
+This fork ships with two Slack lanes (`slack` / `slack-mat`) as channels. Each channel lives under `src/channels/` and self-registers at startup; channels with missing credentials emit a WARN log and are skipped. Gmail is not a channel in this fork — it is exposed to the container agent as an MCP tool (see `/add-gmail` skill).
 
 ### System Diagram
 
 ```mermaid
 graph LR
     subgraph Channels["Channels"]
-        SL[Slack]
-        GM[Gmail]
+        SL["Slack (pat lane)"]
+        SM["Slack-mat (mat lane)"]
         New["Other Channel"]
     end
 
@@ -113,7 +114,7 @@ graph LR
     end
 
     %% Flow
-    SL & GM & New -->|onMessage| ML
+    SL & SM & New -->|onMessage| ML
     ML --> GQ
     GQ -->|concurrency| CR
     CR --> LC
@@ -193,8 +194,9 @@ Channels self-register using a barrel-import pattern:
 2. The barrel file `src/channels/index.ts` imports all channel modules, triggering registration:
 
    ```typescript
-   import './slack.js';
-   import './slack-mat.js';
+   // src/channels/index.ts
+   import './slack.js';     // pat lane
+   import './slack-mat.js'; // mat lane
    ```
 
 3. At startup, the orchestrator (`src/index.ts`) loops through registered channels and connects whichever ones return a valid instance:
@@ -241,7 +243,10 @@ nanoclaw/
 ├── CLAUDE.md                      # Project context for Claude Code
 ├── docs/
 │   ├── SPEC.md                    # This specification document
-│   └── SECURITY.md                # Security model
+│   ├── SECURITY.md                # Security model
+│   ├── SDK_DEEP_DIVE.md           # Agent SDK internals
+│   ├── DEBUG_CHECKLIST.md         # Debugging checklist
+│   └── APPLE-CONTAINER-NETWORKING.md  # Apple container networking notes
 ├── README.md                      # User documentation
 ├── package.json                   # Node.js dependencies
 ├── tsconfig.json                  # TypeScript configuration
@@ -252,18 +257,41 @@ nanoclaw/
 │   ├── index.ts                   # Orchestrator: state, message loop, agent invocation
 │   ├── channels/
 │   │   ├── registry.ts            # Channel factory registry
-│   │   └── index.ts               # Barrel imports for channel self-registration
-│   ├── ipc.ts                     # IPC watcher and task processing
+│   │   ├── index.ts               # Barrel imports for channel self-registration
+│   │   ├── slack.ts               # Slack pat-lane channel
+│   │   └── slack-mat.ts           # Slack mat-lane channel
+│   ├── config.ts                  # Configuration constants (triggers, paths, timeouts)
+│   ├── types.ts                   # TypeScript interfaces (Channel, ChannelOpts, etc.)
+│   ├── db.ts                      # SQLite initialization and queries
+│   ├── db-schema.ts               # Schema definitions and migrations
 │   ├── router.ts                  # Finds the owning channel for a JID
 │   ├── formatting.ts              # Message formatting helpers
-│   ├── config.ts                  # Configuration constants
-│   ├── types.ts                   # TypeScript interfaces (includes Channel)
-│   ├── logger.ts                  # Pino logger setup
-│   ├── db.ts                      # SQLite database initialization and queries
+│   ├── ipc.ts                     # IPC watcher and task processing
+│   ├── container-runner.ts        # Spawns agents in containers
+│   ├── container-runtime.ts       # Container binary detection and lifecycle
+│   ├── container-credentials.ts   # OneCLI credential injection for containers
+│   ├── container-mounts.ts        # Volume mount assembly
+│   ├── container-path-translator.ts # Host↔container path mapping
 │   ├── group-queue.ts             # Per-group queue with global concurrency limit
-│   ├── mount-security.ts          # Mount allowlist validation for containers
+│   ├── group-folder.ts            # Group folder name resolution
+│   ├── group-state.ts             # In-memory group state tracking
 │   ├── task-scheduler.ts          # Runs scheduled tasks when due
-│   └── container-runner.ts        # Spawns agents in containers
+│   ├── schedule-utils.ts          # Cron/interval/once helpers
+│   ├── session-commands.ts        # Session reset / management commands
+│   ├── session-cleanup.ts         # Stale session auto-cleanup
+│   ├── session-reset.ts           # "세션초기화" handler
+│   ├── remote-control.ts          # Remote restart/reload triggers
+│   ├── lab-dashboard.ts           # Lab dashboard trigger handler
+│   ├── codex-usage.ts             # Codex API usage tracking
+│   ├── transcribe.ts              # whisper-cpp audio transcription
+│   ├── sender-allowlist.ts        # Per-channel sender allowlist
+│   ├── mount-security.ts          # Mount allowlist validation
+│   ├── ipc-auth.ts                # IPC authentication
+│   ├── env.ts                     # .env file reader
+│   ├── timezone.ts                # IANA timezone resolution
+│   ├── text-styles.ts             # Text style helpers
+│   ├── logger.ts                  # Pino logger setup
+│   └── *.test.ts                  # Co-located unit tests
 │
 ├── container/
 │   ├── Dockerfile                 # Container image (runs as 'node' user, includes Claude Code CLI)
@@ -273,9 +301,16 @@ nanoclaw/
 │   │   ├── tsconfig.json
 │   │   └── src/
 │   │       ├── index.ts           # Entry point (query loop, IPC polling, session resume)
+│   │       ├── sdk-adapter.ts     # Common adapter interface for agent SDKs
+│   │       ├── claude-adapter.ts  # Claude Code CLI adapter
+│   │       ├── codex-adapter.ts   # Codex CLI adapter
+│   │       ├── shared.ts          # Shared helpers (conversation archive, etc.)
 │   │       └── ipc-mcp-stdio.ts   # Stdio-based MCP server for host communication
 │   └── skills/
-│       └── agent-browser.md       # Browser automation skill
+│       ├── agent-browser/         # Browser automation skill
+│       ├── capabilities/          # Capability declarations
+│       ├── slack-formatting/      # Slack markup conversion
+│       └── status/                # Status reporting skill
 │
 ├── dist/                          # Compiled JavaScript (gitignored)
 │
@@ -295,7 +330,7 @@ nanoclaw/
 │   ├── slack_main/                 # Main control channel
 │   │   ├── CLAUDE.md              # Main channel memory
 │   │   └── logs/                  # Task execution logs
-│   └── {channel}_{group-name}/    # Per-group folders (created on registration)
+│   └── {channel}_{name}_{bot}/     # Per-group folders (e.g. slack_family-chat_pat, slack_dev-team_mat)
 │       ├── CLAUDE.md              # Group-specific memory
 │       ├── logs/                  # Task logs for this group
 │       └── *.md                   # Files created by the agent
@@ -323,31 +358,24 @@ nanoclaw/
 
 Configuration constants are in `src/config.ts`:
 
-```typescript
-import path from 'path';
+Key constants (see `src/config.ts` for full source):
 
-export const PAT_ASSISTANT_NAME = process.env.PAT_ASSISTANT_NAME || '패트';
-export const MAT_ASSISTANT_NAME = process.env.MAT_ASSISTANT_NAME || '매트';
-export const POLL_INTERVAL = 2000;
-export const SCHEDULER_POLL_INTERVAL = 60000;
+| Constant | Default | Purpose |
+|----------|---------|---------|
+| `PAT_ASSISTANT_NAME` | `'패트'` | Pat bot display name (env / `.env`) |
+| `MAT_ASSISTANT_NAME` | `'매트'` | Mat bot display name (env / `.env`) |
+| `POLL_INTERVAL` | `2000` ms | Message loop polling interval |
+| `SCHEDULER_POLL_INTERVAL` | `60000` ms | Scheduler loop interval |
+| `CONTAINER_IMAGE` | `nanoclaw-agent:latest` | Container image name |
+| `CONTAINER_TIMEOUT` | `1800000` ms (30 min) | Max container run time |
+| `IDLE_TIMEOUT` | `1800000` ms (30 min) | Keep container alive after last result |
+| `MAX_CONCURRENT_CONTAINERS` | `5` | Global concurrency cap |
+| `ONECLI_URL` | `http://localhost:10254` | OneCLI gateway address |
+| `MAX_MESSAGES_PER_PROMPT` | `10` | Message catch-up limit |
 
-// Paths are absolute (required for container mounts)
-const PROJECT_ROOT = process.cwd();
-export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
-export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
-export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+Paths (`STORE_DIR`, `GROUPS_DIR`, `DATA_DIR`) are resolved as absolute from `process.cwd()` — required for container volume mounts.
 
-// Container configuration
-export const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
-export const CONTAINER_TIMEOUT = parseInt(process.env.CONTAINER_TIMEOUT || '1800000', 10); // 30min default
-export const IPC_POLL_INTERVAL = 1000;
-export const IDLE_TIMEOUT = parseInt(process.env.IDLE_TIMEOUT || '1800000', 10); // 30min — keep container alive after last result
-export const MAX_CONCURRENT_CONTAINERS = Math.max(1, parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5);
-
-export const TRIGGER_PATTERN = new RegExp(`^@${PAT_ASSISTANT_NAME}(?:\\s|$)`, 'i');
-```
-
-**Note:** Paths must be absolute for container volume mounts to work correctly.
+`getGroupBotName(chatJid)` returns `MAT_ASSISTANT_NAME` for `slack-mat:*` JIDs, `PAT_ASSISTANT_NAME` otherwise. `buildTriggerPattern(trigger)` builds a per-group trigger regex.
 
 ### Container Configuration
 
@@ -378,22 +406,15 @@ Additional mounts appear at `/workspace/extra/{containerPath}` inside the contai
 
 **Mount syntax note:** Read-write mounts use `-v host:container`, but readonly mounts require `--mount "type=bind,source=...,target=...,readonly"` (the `:ro` suffix may not work on all runtimes).
 
-### Claude Authentication
+### Secret Management (OneCLI)
 
-Configure authentication in a `.env` file in the project root. Two options:
+API keys and credentials are **not** stored in `.env` or passed to containers directly. The OneCLI gateway (`ONECLI_URL`, default `http://localhost:10254`) handles secret injection at request time:
 
-**Option 1: Claude Subscription (OAuth token)**
-```bash
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
-```
-The token can be extracted from `~/.claude/.credentials.json` if you're logged in to Claude Code.
+- `container-credentials.ts` calls OneCLI to obtain per-container secrets
+- Secrets are injected into the container environment by the runner — never written to disk inside the container
+- Supported secrets: Claude API keys, Codex API keys, Slack tokens, and any other credentials registered in OneCLI
 
-**Option 2: Pay-per-use API Key**
-```bash
-ANTHROPIC_API_KEY=sk-ant-api03-...
-```
-
-Only the authentication variables (`CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`) are extracted from `.env` and written to `data/env/env`, then mounted into the container at `/workspace/env-dir/env` and sourced by the entrypoint script. This ensures other environment variables in `.env` are not exposed to the agent. This workaround is needed because some container runtimes lose `-e` environment variables when using `-i` (interactive mode with piped stdin).
+See `onecli --help` for secret registration and agent assignment.
 
 ### Changing the Assistant Name
 
@@ -510,11 +531,11 @@ Sessions enable conversation continuity - Claude remembers what you talked about
 
 ### Trigger Word Matching
 
-Messages must start with the trigger pattern (default: `@패트`):
-- `@패트 what's the weather?` → ✅ Triggers Claude
-- `@andy help me` → ✅ Triggers (case insensitive)
-- `Hey @패트` → ❌ Ignored (trigger not at start)
-- `What's up?` → ❌ Ignored (no trigger)
+Messages must start with the group's trigger pattern (default: `@패트`; mat-lane groups use `@매트`):
+- `@패트 what's the weather?` → Triggers pat agent
+- `@매트 이거 분석해줘` → Triggers mat agent
+- `Hey @패트` → Ignored (trigger not at start)
+- `What's up?` → Ignored (no trigger)
 
 ### Conversation Catch-Up
 
@@ -632,7 +653,7 @@ The `nanoclaw` MCP server is created dynamically per agent call with the current
 
 ## Deployment
 
-NanoClaw runs as a single macOS launchd service.
+NanoClaw runs as a system service — macOS (launchd) or Linux (systemd).
 
 ### Startup Sequence
 
@@ -742,9 +763,9 @@ Inbound channel messages could contain malicious instructions attempting to mani
 
 | Credential | Storage Location | Notes |
 |------------|------------------|-------|
-| Claude CLI Auth | data/sessions/{group}/.claude/ | Per-group isolation, mounted to /home/node/.claude/ |
-| Slack tokens | `.env` (SLACK_PAT_*, SLACK_MAT_*) | Copied to `data/env/env` for container mount |
-| Gmail OAuth | `~/.gmail-mcp/credentials.json` | Mounted into the container read-only |
+| API keys (Claude, Codex, etc.) | OneCLI gateway | Injected at container spawn time — never on disk inside container |
+| Slack tokens | `.env` (SLACK_PAT_*, SLACK_MAT_*) | Read by host process at startup |
+| Session state | data/sessions/{group}/.claude/ | Per-group isolation, mounted to /home/node/.claude/ |
 
 ### File Permissions
 
