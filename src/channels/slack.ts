@@ -16,7 +16,7 @@ import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import {
   isAudioMimetype,
-  isWhisperAvailable,
+  isWhisperXAvailable,
   transcribeAudio,
 } from '../transcribe.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -639,8 +639,8 @@ export class SlackChannel implements Channel {
     channelId: string,
     fileName: string,
   ): Promise<string | null> {
-    if (!isWhisperAvailable()) {
-      logger.warn('Whisper not available, skipping transcription');
+    if (!isWhisperXAvailable()) {
+      logger.warn('WhisperX not available, skipping transcription');
       return null;
     }
 

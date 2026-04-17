@@ -283,7 +283,7 @@ nanoclaw/
 │   ├── remote-control.ts          # Remote restart/reload triggers
 │   ├── lab-dashboard.ts           # Lab dashboard trigger handler
 │   ├── codex-usage.ts             # Codex API usage tracking
-│   ├── transcribe.ts              # whisper-cpp audio transcription
+│   ├── transcribe.ts              # WhisperX (faster-whisper + pyannote) audio transcription
 │   ├── sender-allowlist.ts        # Per-channel sender allowlist
 │   ├── mount-security.ts          # Mount allowlist validation
 │   ├── ipc-auth.ts                # IPC authentication

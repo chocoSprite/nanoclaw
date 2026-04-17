@@ -1,29 +1,34 @@
 /**
- * Local audio transcription using whisper-cpp (whisper-cli).
- * Requires: brew install whisper-cpp
- * Models in data/models/:
- *   - ggml-large-v3.bin         — main transcription model
- *   - ggml-silero-v6.2.0.bin    — VAD model (optional, but strongly recommended)
- * Language: forced to Korean (-l ko) — auto-detect was unreliable
- * (sometimes mis-detected Korean audio as Chinese).
- * VAD: when the VAD model is present, silence is pre-filtered. This
- * drastically reduces hallucination loops on multi-speaker / meeting audio.
+ * Local audio transcription via WhisperX (faster-whisper + pyannote diarization
+ * + wav2vec2 alignment). Spawns `scripts/transcribe-whisperx.py` inside a
+ * Python venv at `data/whisperx-venv/`.
+ *
+ * Requirements:
+ *   data/whisperx-venv/bin/python3            — venv with `whisperx` installed
+ *   scripts/transcribe-whisperx.py            — wrapper
+ *   .env: HF_TOKEN=hf_...                     — HuggingFace token (pyannote terms agreed)
+ *
+ * Language: forced to Korean (--language ko). Output format:
+ *   [MM:SS SPEAKER_XX] text
+ *
+ * The wrapper emits stderr `PROGRESS stage=<load|transcribe|align|diarize|error>
+ * [t=MM:SS]` lines; we forward stage+time to the caller via TranscribeProgress.
  */
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR } from './config.js';
+import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 
-const WHISPER_BIN =
-  process.env.WHISPER_BIN ||
-  ['/opt/homebrew/bin/whisper-cli', '/usr/local/bin/whisper-cli'].find((p) =>
-    fs.existsSync(p),
-  ) ||
-  'whisper-cli';
-const MODEL_PATH = path.join(DATA_DIR, 'models', 'ggml-large-v3.bin');
-const VAD_MODEL_PATH = path.join(DATA_DIR, 'models', 'ggml-silero-v6.2.0.bin');
+const PYTHON_BIN = path.join(DATA_DIR, 'whisperx-venv', 'bin', 'python3');
+const SCRIPT_PATH = path.resolve(
+  process.cwd(),
+  'scripts',
+  'transcribe-whisperx.py',
+);
+const HF_HOME = path.join(DATA_DIR, 'hf-cache');
 const TRANSCRIBE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
@@ -44,30 +49,42 @@ export function isAudioMimetype(mime: string): boolean {
   return AUDIO_MIMETYPES.has(mime);
 }
 
-// Cache whisper availability check
-let whisperAvailable: boolean | null = null;
+// Cache availability check (evaluated on first call)
+let whisperxAvailable: boolean | null = null;
+let hfTokenCache: string | null = null;
 
-export function isWhisperAvailable(): boolean {
-  if (whisperAvailable !== null) return whisperAvailable;
+function loadHfToken(): string | null {
+  if (hfTokenCache !== null) return hfTokenCache;
+  const env = readEnvFile(['HF_TOKEN']);
+  hfTokenCache = env.HF_TOKEN || '';
+  return hfTokenCache || null;
+}
 
-  if (!fs.existsSync(WHISPER_BIN)) {
+export function isWhisperXAvailable(): boolean {
+  if (whisperxAvailable !== null) return whisperxAvailable;
+
+  if (!fs.existsSync(PYTHON_BIN)) {
     logger.warn(
-      { bin: WHISPER_BIN },
-      'whisper-cli not found — audio transcription disabled. Install: brew install whisper-cpp',
+      { pythonBin: PYTHON_BIN },
+      'WhisperX venv not found — audio transcription disabled. Setup: python3 -m venv data/whisperx-venv && data/whisperx-venv/bin/pip install whisperx',
     );
-    whisperAvailable = false;
+    whisperxAvailable = false;
     return false;
   }
-  if (!fs.existsSync(MODEL_PATH)) {
-    logger.warn(
-      { modelPath: MODEL_PATH },
-      'whisper-cli found but model file missing',
-    );
-    whisperAvailable = false;
+  if (!fs.existsSync(SCRIPT_PATH)) {
+    logger.warn({ scriptPath: SCRIPT_PATH }, 'WhisperX wrapper script missing');
+    whisperxAvailable = false;
     return false;
   }
-  whisperAvailable = true;
-  return whisperAvailable;
+  if (!loadHfToken()) {
+    logger.warn(
+      'HF_TOKEN missing in .env — WhisperX diarization will fail. Get one at https://huggingface.co/settings/tokens and agree to pyannote terms',
+    );
+    whisperxAvailable = false;
+    return false;
+  }
+  whisperxAvailable = true;
+  return whisperxAvailable;
 }
 
 export interface TranscribeProgress {
@@ -80,6 +97,8 @@ export interface TranscribeProgress {
 // line appears this many times in a row, we treat the rest of the file as
 // degenerate output and truncate. 10 is safely above natural Korean repetition
 // (e.g. rapid "네. 네. 네." agreement, which rarely exceeds 3–5 in a row).
+// WhisperX rarely produces these loops (diarization timestamps make exact-line
+// repetition unlikely), but we keep the post-process as defense-in-depth.
 const LOOP_THRESHOLD = 10;
 
 /**
@@ -148,15 +167,17 @@ function releaseLock(): void {
   if (next) next();
 }
 
+const PROGRESS_RE = /^PROGRESS stage=(\w+)(?: t=(\d{2}:\d{2}))?/;
+
 /**
- * Transcribe an audio file using whisper-cli.
+ * Transcribe an audio file using the WhisperX Python wrapper.
  * Returns the path to the transcript .txt file, or null on failure.
  */
 export async function transcribeAudio(
   audioPath: string,
   onProgress?: (progress: TranscribeProgress) => void,
 ): Promise<string | null> {
-  if (!isWhisperAvailable()) return null;
+  if (!isWhisperXAvailable()) return null;
 
   // Check file size
   const stat = fs.statSync(audioPath);
@@ -168,7 +189,7 @@ export async function transcribeAudio(
     return null;
   }
 
-  // Output file path (whisper-cli appends .txt to the -of value)
+  // Output file path (wrapper appends .txt to --output-prefix)
   const outputPrefix = audioPath.replace(/\.[^.]+$/, '');
   const outputPath = `${outputPrefix}.txt`;
 
@@ -190,60 +211,67 @@ export async function transcribeAudio(
       return outputPath;
     }
 
-    logger.info({ audioPath }, 'Starting audio transcription');
+    logger.info({ audioPath }, 'Starting audio transcription (WhisperX)');
+
+    const hfToken = loadHfToken();
+    if (!hfToken) {
+      logger.warn('HF_TOKEN lost between availability check and spawn');
+      return null;
+    }
 
     return await new Promise<string | null>((resolve) => {
-      const args = ['-m', MODEL_PATH, '-l', 'ko', '-otxt', '-of', outputPrefix];
-      if (fs.existsSync(VAD_MODEL_PATH)) {
-        args.push('--vad', '--vad-model', VAD_MODEL_PATH);
-      }
-      args.push(audioPath);
+      const args = [
+        SCRIPT_PATH,
+        audioPath,
+        '--output-prefix',
+        outputPrefix,
+        '--language',
+        'ko',
+      ];
 
-      const proc = spawn(WHISPER_BIN, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      const proc = spawn(PYTHON_BIN, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        env: {
+          ...process.env,
+          HF_TOKEN: hfToken,
+          HF_HOME,
+        },
       });
 
       let stderr = '';
-      let stdoutBuf = '';
+      let stderrBuf = '';
       const timeout = setTimeout(() => {
         proc.kill('SIGTERM');
         logger.warn({ audioPath }, 'Transcription timed out');
         resolve(null);
       }, TRANSCRIBE_TIMEOUT);
 
-      // Parse progress from stdout (whisper-cli outputs timestamps to stdout)
-      // Lines like: [00:00:00.000 --> 00:00:07.000]  text
       let lastProgressUpdate = 0;
-      proc.stdout.on('data', (chunk: Buffer) => {
-        stdoutBuf += chunk.toString();
+      proc.stderr.on('data', (chunk: Buffer) => {
+        const s = chunk.toString();
+        stderr += s;
+        stderrBuf += s;
 
         if (!onProgress) return;
 
-        const lines = stdoutBuf.split('\n');
-        const lastTimeLine = [...lines]
-          .reverse()
-          .find((l) => /\[\d{2}:\d{2}:\d{2}/.test(l));
-        if (!lastTimeLine) return;
+        // Parse line-buffered PROGRESS updates
+        let nlIdx: number;
+        while ((nlIdx = stderrBuf.indexOf('\n')) !== -1) {
+          const line = stderrBuf.slice(0, nlIdx);
+          stderrBuf = stderrBuf.slice(nlIdx + 1);
 
-        const match = lastTimeLine.match(
-          /\[(\d{2}):(\d{2}):(\d{2})\.\d+ --> (\d{2}):(\d{2}):(\d{2})\.\d+\]/,
-        );
-        if (!match) return;
+          const match = line.match(PROGRESS_RE);
+          if (!match) continue;
 
-        const now = Date.now();
-        if (now - lastProgressUpdate < 10_000) return; // Throttle to 10s
-        lastProgressUpdate = now;
+          const now = Date.now();
+          if (now - lastProgressUpdate < 10_000) continue; // Throttle to 10s
+          lastProgressUpdate = now;
 
-        const endH = parseInt(match[4]);
-        const endM = parseInt(match[5]);
-        const endS = parseInt(match[6]);
-        const currentTime = `${String(endH * 60 + endM).padStart(2, '0')}:${String(endS).padStart(2, '0')}`;
-
-        onProgress({ percent: -1, currentTime });
-      });
-
-      proc.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
+          const stage = match[1];
+          const t = match[2];
+          const currentTime = t ? `${stage} ${t}` : stage;
+          onProgress({ percent: -1, currentTime });
+        }
       });
 
       proc.on('close', (code) => {
@@ -261,7 +289,7 @@ export async function transcribeAudio(
           resolve(outputPath);
         } else {
           logger.warn(
-            { audioPath, code, stderr: stderr.slice(-500) },
+            { audioPath, code, stderr: stderr.slice(-1000) },
             'Transcription failed',
           );
           resolve(null);
