@@ -1,7 +1,13 @@
 /**
  * Local audio transcription using whisper-cpp (whisper-cli).
  * Requires: brew install whisper-cpp
- * Model: ggml-large-v3-turbo.bin in data/models/
+ * Models in data/models/:
+ *   - ggml-large-v3.bin         — main transcription model
+ *   - ggml-silero-v6.2.0.bin    — VAD model (optional, but strongly recommended)
+ * Language: forced to Korean (-l ko) — auto-detect was unreliable
+ * (sometimes mis-detected Korean audio as Chinese).
+ * VAD: when the VAD model is present, silence is pre-filtered. This
+ * drastically reduces hallucination loops on multi-speaker / meeting audio.
  */
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -16,7 +22,8 @@ const WHISPER_BIN =
     fs.existsSync(p),
   ) ||
   'whisper-cli';
-const MODEL_PATH = path.join(DATA_DIR, 'models', 'ggml-large-v3-turbo.bin');
+const MODEL_PATH = path.join(DATA_DIR, 'models', 'ggml-large-v3.bin');
+const VAD_MODEL_PATH = path.join(DATA_DIR, 'models', 'ggml-silero-v6.2.0.bin');
 const TRANSCRIBE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
@@ -137,20 +144,15 @@ export async function transcribeAudio(
     logger.info({ audioPath }, 'Starting audio transcription');
 
     return await new Promise<string | null>((resolve) => {
-      const proc = spawn(
-        WHISPER_BIN,
-        [
-          '-m',
-          MODEL_PATH,
-          '-l',
-          'auto',
-          '-otxt',
-          '-of',
-          outputPrefix,
-          audioPath,
-        ],
-        { stdio: ['ignore', 'pipe', 'pipe'] },
-      );
+      const args = ['-m', MODEL_PATH, '-l', 'ko', '-otxt', '-of', outputPrefix];
+      if (fs.existsSync(VAD_MODEL_PATH)) {
+        args.push('--vad', '--vad-model', VAD_MODEL_PATH);
+      }
+      args.push(audioPath);
+
+      const proc = spawn(WHISPER_BIN, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
 
       let stderr = '';
       let stdoutBuf = '';
