@@ -76,6 +76,55 @@ export interface TranscribeProgress {
   totalTime?: string;
 }
 
+// Threshold for detecting whisper hallucination loops: if the same non-empty
+// line appears this many times in a row, we treat the rest of the file as
+// degenerate output and truncate. 10 is safely above natural Korean repetition
+// (e.g. rapid "네. 네. 네." agreement, which rarely exceeds 3–5 in a row).
+const LOOP_THRESHOLD = 10;
+
+/**
+ * Strip trailing whisper hallucination loops from a transcript file.
+ * Detects the first run of >= LOOP_THRESHOLD consecutive identical non-empty
+ * lines and truncates at that point, appending a marker so downstream
+ * consumers know content was removed. Mutates the file in place.
+ * Returns the number of lines removed (0 if no loop detected).
+ */
+export function stripTailLoops(
+  txtPath: string,
+  threshold = LOOP_THRESHOLD,
+): number {
+  const raw = fs.readFileSync(txtPath, 'utf8');
+  const lines = raw.split('\n');
+
+  let runStart = -1;
+  let runValue: string | null = null;
+  let runLen = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line && line === runValue) {
+      runLen++;
+      if (runLen >= threshold && runStart === -1) {
+        runStart = i - threshold + 1;
+      }
+    } else {
+      if (runStart !== -1) break; // loop ended; keep the one we found
+      runValue = line || null;
+      runLen = line ? 1 : 0;
+    }
+  }
+
+  if (runStart === -1) return 0;
+
+  const removed = lines.length - runStart;
+  const kept = lines.slice(0, runStart);
+  kept.push(
+    `[... ${removed} repeated lines truncated (whisper hallucination)]`,
+  );
+  fs.writeFileSync(txtPath, kept.join('\n'));
+  return removed;
+}
+
 // Simple mutex to prevent concurrent whisper processes
 let transcribing = false;
 const waitQueue: Array<() => void> = [];
@@ -201,6 +250,13 @@ export async function transcribeAudio(
         clearTimeout(timeout);
 
         if (code === 0 && fs.existsSync(outputPath)) {
+          const removed = stripTailLoops(outputPath);
+          if (removed > 0) {
+            logger.info(
+              { audioPath, outputPath, removed },
+              'Stripped whisper hallucination loop',
+            );
+          }
           logger.info({ audioPath, outputPath }, 'Transcription completed');
           resolve(outputPath);
         } else {
