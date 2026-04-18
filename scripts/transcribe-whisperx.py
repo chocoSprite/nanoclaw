@@ -54,7 +54,49 @@ def main() -> int:
     parser.add_argument("--output-prefix", required=True)
     parser.add_argument("--language", default="ko")
     parser.add_argument("--model", default="large-v3")
+    # Quality levers — defaults preserve pre-tuning behavior (int8, beam=5).
+    # Override via CLI for A/B testing.
+    parser.add_argument(
+        "--compute-type",
+        default="int8",
+        choices=["int8", "int8_float16", "float16", "float32"],
+        help="CTranslate2 quantization. int8=fastest, float32=highest quality",
+    )
+    parser.add_argument(
+        "--beam-size", type=int, default=5, help="Decoder beam width (default 5)"
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=32, help="Transcription batch size"
+    )
+    parser.add_argument(
+        "--initial-prompt",
+        default=None,
+        help="Domain vocabulary to prime the decoder (comma-separated terms, ~224 token cap)",
+    )
+    parser.add_argument(
+        "--initial-prompt-file",
+        default=None,
+        help="Read initial_prompt from a file (alternative to --initial-prompt)",
+    )
+    parser.add_argument(
+        "--condition-on-previous-text",
+        default="true",
+        choices=["true", "false"],
+        help="Feed previous segment text into next segment (default true)",
+    )
+    parser.add_argument(
+        "--temperatures",
+        default="0.0,0.2,0.4,0.6,0.8,1.0",
+        help="Comma-separated fallback temperatures, e.g. '0.0' disables fallback",
+    )
     args = parser.parse_args()
+
+    initial_prompt = args.initial_prompt
+    if args.initial_prompt_file and not initial_prompt:
+        with open(args.initial_prompt_file, encoding="utf-8") as f:
+            initial_prompt = f.read().strip()
+    cond_prev = args.condition_on_previous_text == "true"
+    temperatures = [float(x) for x in args.temperatures.split(",") if x.strip()]
 
     hf_token = os.environ.get("HF_TOKEN")
     if not hf_token:
@@ -70,26 +112,34 @@ def main() -> int:
         import torch as _torch  # for MPS probe
         import whisperx  # heavy import, do after env check
 
-        # faster-whisper (CTranslate2) has no MPS backend — CPU int8 only.
+        # faster-whisper (CTranslate2) has no MPS backend — CPU only.
         # M4 Pro has 10 performance cores; default thread count is 4.
         asr_device = "cpu"
-        compute_type = "int8"
-        batch_size = 32
         cpu_threads = 10
 
         # PyTorch-based steps (align + diarize) can use MPS on Apple Silicon.
         gpu_device = "mps" if _torch.backends.mps.is_available() else "cpu"
 
+        # whisperx exposes faster-whisper knobs through asr_options.
+        asr_options: dict = {
+            "beam_size": args.beam_size,
+            "condition_on_previous_text": cond_prev,
+            "temperatures": temperatures,
+        }
+        if initial_prompt:
+            asr_options["initial_prompt"] = initial_prompt
+
         model = whisperx.load_model(
             args.model,
             asr_device,
-            compute_type=compute_type,
+            compute_type=args.compute_type,
             language=args.language,
             threads=cpu_threads,
+            asr_options=asr_options,
         )
 
         audio = whisperx.load_audio(args.audio_path)
-        result = model.transcribe(audio, batch_size=batch_size)
+        result = model.transcribe(audio, batch_size=args.batch_size)
 
         segments = result.get("segments") or []
         last_end = segments[-1]["end"] if segments else 0.0

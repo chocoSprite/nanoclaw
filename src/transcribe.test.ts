@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { stripTailLoops } from './transcribe.js';
+import { stripHeadLoops, stripTailLoops } from './transcribe.js';
 
 describe('stripTailLoops', () => {
   let tmpDir: string;
@@ -91,5 +91,133 @@ describe('stripTailLoops', () => {
     const result = fs.readFileSync(txtPath, 'utf8').split('\n');
     expect(result.slice(0, 2)).toEqual(lead);
     expect(result[2]).toMatch(/17 repeated lines truncated/);
+  });
+});
+
+describe('stripHeadLoops', () => {
+  let tmpDir: string;
+  let txtPath: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'transcribe-head-test-'));
+    txtPath = path.join(tmpDir, 'transcript.txt');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('strips first-line silence leak with 2 repeated words', () => {
+    const content = [
+      '[00:05 SPEAKER_00] 프리패스, 프리패스',
+      '[00:29 SPEAKER_00] 뭐 하셨어요?',
+      '[00:33 SPEAKER_00] 네?',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(1);
+    const result = fs.readFileSync(txtPath, 'utf8').split('\n');
+    expect(result[0]).toBe('[00:29 SPEAKER_00] 뭐 하셨어요?');
+    expect(result).not.toContain('[00:05 SPEAKER_00] 프리패스, 프리패스');
+  });
+
+  it('strips first-line silence leak with 3 repeated words', () => {
+    const content = [
+      '[00:00 SPEAKER_00] 스포츠, 스포츠, 스포츠',
+      '[00:29 SPEAKER_00] 안녕하세요.',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(1);
+    const result = fs.readFileSync(txtPath, 'utf8').split('\n');
+    expect(result[0]).toBe('[00:29 SPEAKER_00] 안녕하세요.');
+  });
+
+  it('no-op when first line has distinct words', () => {
+    const content = [
+      '[00:03 SPEAKER_00] 스피드, 폴리텍,',
+      '[00:29 SPEAKER_00] 뭐 하셨어요?',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(0);
+    expect(fs.readFileSync(txtPath, 'utf8')).toBe(content);
+  });
+
+  it('no-op when first line is normal speech', () => {
+    const content = [
+      '[00:00 SPEAKER_02] 감사합니다.',
+      '[00:17 SPEAKER_02] 시험 보고 성적서 발행까지',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(0);
+    expect(fs.readFileSync(txtPath, 'utf8')).toBe(content);
+  });
+
+  it('no-op when first line has more than 5 tokens (too long to be a leak)', () => {
+    const content = [
+      '[00:00 SPEAKER_00] 네 네 네 네 네 네 네 네',
+      '[00:10 SPEAKER_00] 그 다음.',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(0);
+  });
+
+  it('no-op when first line is a single word', () => {
+    const content = [
+      '[00:00 SPEAKER_00] 프리패스',
+      '[00:10 SPEAKER_00] 다음.',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(0);
+  });
+
+  it('skips leading blank lines to find the first content line', () => {
+    const content = [
+      '',
+      '',
+      '[00:05 SPEAKER_00] 프리패스, 프리패스',
+      '[00:30 SPEAKER_00] 시작.',
+    ].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(1);
+    const result = fs.readFileSync(txtPath, 'utf8').split('\n');
+    expect(result).not.toContain('[00:05 SPEAKER_00] 프리패스, 프리패스');
+  });
+
+  it('no-op when file is empty', () => {
+    fs.writeFileSync(txtPath, '');
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(0);
+  });
+
+  it('no-op when first line does not match segment format', () => {
+    const content = ['그냥 텍스트 라인', 'another line'].join('\n');
+    fs.writeFileSync(txtPath, content);
+
+    const removed = stripHeadLoops(txtPath);
+
+    expect(removed).toBe(0);
+    expect(fs.readFileSync(txtPath, 'utf8')).toBe(content);
   });
 });

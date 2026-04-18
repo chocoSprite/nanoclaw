@@ -29,8 +29,36 @@ const SCRIPT_PATH = path.resolve(
   'transcribe-whisperx.py',
 );
 const HF_HOME = path.join(DATA_DIR, 'hf-cache');
-const TRANSCRIBE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+// Bumped from 15m → 60m: WhisperX on multi-speaker meetings (pyannote 3.1 with
+// 5+ speakers) can take ~35m for a 12-min file on M4 Pro CPU. 60m covers most
+// meeting-length audio up to ~30 min real time.
+const TRANSCRIBE_TIMEOUT = 60 * 60 * 1000; // 60 minutes
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
+
+// Compute type: float32 on M4 Pro CPU is comparable or faster than int8
+// (Apple Silicon has strong FP32 perf; int8 dequant/requant adds overhead on
+// some ops). Higher precision also produces slightly more natural segmentation
+// and fewer hallucinations. Tradeoff: silence-leak artifact at audio start
+// when the recording begins with silence — mitigated by stripHeadLoops below.
+const COMPUTE_TYPE = 'float32';
+
+// Domain vocabulary fed to faster-whisper as `initial_prompt`. Primes the
+// decoder to recognize company-specific terms, product names, employee names,
+// and advertising jargon that would otherwise be mis-transcribed (e.g.
+// "꿀"→"콜", "지면"→"지명", "만능티켓"→"맞는 티켓", "더블부스터"→"더블 몬스터").
+// Keep under ~224 Whisper tokens (~600 chars). See reference_company_products
+// and reference_team_roster memories for source terms.
+const WHISPER_INITIAL_PROMPT = [
+  '보상, 퀴즈, 만보기, 유저, 마이비, 원셀프월드, 지면, 부스터, 온보딩',
+  'TIPS, ADCHAIN, 애드체인, 배너, 지표, 꿀, 위젯, 포토위젯, 로그로스',
+  '비기너, 넛지, 바텀시트, 취향투표, 취향티켓, 만능티켓, 라이브지면, 광고지면',
+  'CPI, CPS, RV, IV, SSP, KPI, DAU, MAU, APL, MAF',
+  'KOLAS, 카카오골프, 구노, 와이즈버즈, IM뱅크, 챌린저스',
+  'Cho, James, Ken, Alex, Amy, Henry, Emily, Teddy, Peter, Jason',
+  'Luke, Sean, Sem, Victor, Jun, Nate, Jaden, Anna, Pitt',
+  '포스트백, 콜백, 애드조, 애드팝콘, 트래커로그, 네이티브, 인터스티셜, 인벤토리',
+  '락스크린, 스피드부스터, 더블부스터, 프리패스, 트랜잭션',
+].join(', ');
 
 export const AUDIO_MIMETYPES = new Set([
   'audio/mpeg', // mp3
@@ -144,6 +172,51 @@ export function stripTailLoops(
   return removed;
 }
 
+// Regex for a transcript line: `[MM:SS SPEAKER_XX] text`. Anchored; we strip
+// the timestamp+speaker prefix and keep the trailing text for inspection.
+const SEGMENT_LINE_RE = /^\[\d{2}:\d{2}\s+\S+\]\s*(.+?)\s*$/;
+
+/**
+ * Strip the head silence-leak hallucination — an artifact where float32
+ * compute combined with `initial_prompt` causes the decoder to emit a short
+ * repetition of prompt-adjacent tokens during the leading silence of a
+ * recording (e.g. "프리패스, 프리패스" or "스포츠, 스포츠, 스포츠").
+ *
+ * Conservative: only strips the FIRST segment line, and only when its text is
+ * 2–5 tokens of the same word repeated (comma-separated). Normal first lines
+ * like "감사합니다." or "3분 30초" are unaffected.
+ * Returns 1 if stripped, 0 otherwise.
+ */
+export function stripHeadLoops(txtPath: string): number {
+  const raw = fs.readFileSync(txtPath, 'utf8');
+  const lines = raw.split('\n');
+
+  let firstIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim()) {
+      firstIdx = i;
+      break;
+    }
+  }
+  if (firstIdx === -1) return 0;
+
+  const match = lines[firstIdx].match(SEGMENT_LINE_RE);
+  if (!match) return 0;
+
+  const words = match[1]
+    .split(/[,\s]+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (words.length < 2 || words.length > 5) return 0;
+
+  const first = words[0];
+  if (!words.every((w) => w === first)) return 0;
+
+  lines.splice(firstIdx, 1);
+  fs.writeFileSync(txtPath, lines.join('\n'));
+  return 1;
+}
+
 // Simple mutex to prevent concurrent whisper processes
 let transcribing = false;
 const waitQueue: Array<() => void> = [];
@@ -227,6 +300,10 @@ export async function transcribeAudio(
         outputPrefix,
         '--language',
         'ko',
+        '--compute-type',
+        COMPUTE_TYPE,
+        '--initial-prompt',
+        WHISPER_INITIAL_PROMPT,
       ];
 
       const proc = spawn(PYTHON_BIN, args, {
@@ -278,11 +355,18 @@ export async function transcribeAudio(
         clearTimeout(timeout);
 
         if (code === 0 && fs.existsSync(outputPath)) {
-          const removed = stripTailLoops(outputPath);
-          if (removed > 0) {
+          const headRemoved = stripHeadLoops(outputPath);
+          if (headRemoved > 0) {
             logger.info(
-              { audioPath, outputPath, removed },
-              'Stripped whisper hallucination loop',
+              { audioPath, outputPath },
+              'Stripped head silence-leak hallucination',
+            );
+          }
+          const tailRemoved = stripTailLoops(outputPath);
+          if (tailRemoved > 0) {
+            logger.info(
+              { audioPath, outputPath, removed: tailRemoved },
+              'Stripped tail whisper hallucination loop',
             );
           }
           logger.info({ audioPath, outputPath }, 'Transcription completed');
