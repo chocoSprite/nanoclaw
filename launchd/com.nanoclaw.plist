@@ -25,6 +25,10 @@
         <string>패트</string>
         <key>MAT_ASSISTANT_NAME</key>
         <string>매트</string>
+        <key>DASHBOARD_ENABLED</key>
+        <string>1</string>
+        <key>DASHBOARD_PORT</key>
+        <string>3031</string>
     </dict>
     <key>StandardOutPath</key>
     <string>{{PROJECT_ROOT}}/logs/nanoclaw.log</string>

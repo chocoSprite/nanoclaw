@@ -1,0 +1,49 @@
+/**
+ * Dashboard event types — re-exports the authoritative schema from
+ * src/agent-events.ts plus dashboard-local types (live snapshot, WS frames).
+ *
+ * The WS frame types in this file mirror what web/src/contracts.ts declares;
+ * keep them in sync.
+ */
+
+export {
+  EVENT_SCHEMA_VERSION,
+  type AgentEventBus,
+  type AgentEventKind,
+  type AgentEventV1,
+  type BaseEvent,
+  type ContainerExitedEvent,
+  type ContainerSpawnedEvent,
+  type StatusEndedEvent,
+  type StatusStartedEvent,
+  type ToolResultEvent,
+  type ToolUseEvent,
+} from '../agent-events.js';
+
+export type ContainerStatus = 'idle' | 'running' | 'error';
+export type SdkKind = 'claude' | 'codex';
+
+export interface LiveGroupState {
+  jid: string;
+  groupFolder: string;
+  name: string;
+  currentTool: string | null;
+  lastToolAt: string | null;
+  containerStatus: ContainerStatus;
+  sdk: SdkKind;
+}
+
+export interface RegisteredGroupLite {
+  jid: string;
+  groupFolder: string;
+  name: string;
+  active: boolean;
+  sdk: SdkKind;
+}
+
+import type { AgentEventV1 } from '../agent-events.js';
+
+export type WsMessage =
+  | { type: 'snapshot'; groups: LiveGroupState[] }
+  | { type: 'event'; event: AgentEventV1 }
+  | { type: 'roster'; groups: RegisteredGroupLite[] };

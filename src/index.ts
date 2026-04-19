@@ -83,6 +83,8 @@ import {
 } from './task-scheduler.js';
 import { Channel, ChannelType, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { agentEvents } from './agent-events.js';
+import { startDashboard } from './dashboard/index.js';
 
 let messageLoopRunning = false;
 
@@ -634,6 +636,12 @@ async function main(): Promise<void> {
       );
     }
   }
+
+  // Embedded dashboard — flag-gated (DASHBOARD_ENABLED=1). Always non-fatal:
+  // dashboard startup failure logs and the host continues.
+  startDashboard({ agentEvents, queue }).catch((err) => {
+    logger.error({ err }, 'Dashboard startup rejected unexpectedly');
+  });
 
   recoverPendingMessages();
   startMessageLoop().catch((err) => {

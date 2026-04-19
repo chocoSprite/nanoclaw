@@ -18,10 +18,20 @@ import type {
   HookCallback,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
-  writeOutput, log, drainIpcInput, shouldClose,
+  writeOutput,
+  log,
+  drainIpcInput,
+  shouldClose,
   IPC_POLL_MS,
+  createEventEmitter,
 } from './shared.js';
-import type { SdkAdapter, SdkInitOptions, RunQueryOptions, RunQueryResult, RunCompactResult } from './sdk-adapter.js';
+import type {
+  SdkAdapter,
+  SdkInitOptions,
+  RunQueryOptions,
+  RunQueryResult,
+  RunCompactResult,
+} from './sdk-adapter.js';
 import type { ContainerInput } from './shared.js';
 
 /**
@@ -64,7 +74,10 @@ class MessageStream {
 }
 
 export class ClaudeAdapter implements SdkAdapter {
-  private mcpServers!: Record<string, { command: string; args: string[]; env: Record<string, string> }>;
+  private mcpServers!: Record<
+    string,
+    { command: string; args: string[]; env: Record<string, string> }
+  >;
   private globalClaudeMd = '';
   private containerInput!: ContainerInput;
   private extraDirs: string[] = [];
@@ -87,11 +100,28 @@ export class ClaudeAdapter implements SdkAdapter {
     };
   }
 
-  async runQuery(prompt: string, options: RunQueryOptions): Promise<RunQueryResult> {
+  async runQuery(
+    prompt: string,
+    options: RunQueryOptions,
+  ): Promise<RunQueryResult> {
     const stream = new MessageStream();
     stream.push(prompt);
     let closedDuringQuery = false;
     let ipcPolling = true;
+
+    // Dashboard event stream (host-side parser picks up EVENT_V1 markers).
+    const emit = createEventEmitter(this.containerInput);
+    let statusStartedEmitted = false;
+    let endedEmitted = false;
+    const emitEnd = (outcome: 'success' | 'error', error?: string): void => {
+      if (endedEmitted) return;
+      endedEmitted = true;
+      if (!statusStartedEmitted) {
+        emit({ kind: 'status.started', sdk: 'claude' });
+        statusStartedEmitted = true;
+      }
+      emit({ kind: 'status.ended', outcome, error });
+    };
 
     // IPC polling: push mid-turn messages into MessageStream
     const pollIpc = () => {
@@ -124,7 +154,8 @@ export class ClaudeAdapter implements SdkAdapter {
     const queryOptions = {
       cwd: '/workspace/group',
       model: this.containerInput.model,
-      additionalDirectories: this.extraDirs.length > 0 ? this.extraDirs : undefined,
+      additionalDirectories:
+        this.extraDirs.length > 0 ? this.extraDirs : undefined,
       resume: options.sessionId,
       resumeSessionAt: options.resumeAt,
       systemPrompt: this.globalClaudeMd
@@ -135,10 +166,24 @@ export class ClaudeAdapter implements SdkAdapter {
           }
         : undefined,
       allowedTools: [
-        'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-        'WebSearch', 'WebFetch', 'Task', 'TaskOutput', 'TaskStop',
-        'TeamCreate', 'TeamDelete', 'SendMessage', 'TodoWrite',
-        'ToolSearch', 'Skill', 'NotebookEdit',
+        'Bash',
+        'Read',
+        'Write',
+        'Edit',
+        'Glob',
+        'Grep',
+        'WebSearch',
+        'WebFetch',
+        'Task',
+        'TaskOutput',
+        'TaskStop',
+        'TeamCreate',
+        'TeamDelete',
+        'SendMessage',
+        'TodoWrite',
+        'ToolSearch',
+        'Skill',
+        'NotebookEdit',
         'mcp__nanoclaw__*',
       ],
       env: sdkEnv,
@@ -147,36 +192,112 @@ export class ClaudeAdapter implements SdkAdapter {
       settingSources: ['project', 'user'] as ('project' | 'user')[],
       mcpServers: this.mcpServers,
       hooks: {
-        PreCompact: [
-          { hooks: [this.createPreCompactHook()] },
-        ],
+        PreCompact: [{ hooks: [this.createPreCompactHook()] }],
       },
     };
 
     try {
-      for await (const message of query({ prompt: stream, options: queryOptions })) {
-        const msg = message as SDKMessage & { type: string; uuid?: string; text?: string };
+      for await (const message of query({
+        prompt: stream,
+        options: queryOptions,
+      })) {
+        const msg = message as SDKMessage & {
+          type: string;
+          uuid?: string;
+          text?: string;
+        };
 
-        // Track session ID from init message
+        // Track session ID from init message + emit status.started once
         if (msg.type === 'system' && 'session_id' in msg) {
           newSessionId = (msg as { session_id: string }).session_id;
           log(`Session initialized: ${newSessionId}`);
+          if (!statusStartedEmitted) {
+            emit({
+              kind: 'status.started',
+              sdk: 'claude',
+              sessionId: newSessionId,
+            });
+            statusStartedEmitted = true;
+          }
         }
 
-        // Track assistant UUID for granular resume
-        if (msg.type === 'assistant' && msg.uuid) {
-          lastAssistantUuid = msg.uuid;
+        // Track assistant UUID for granular resume + emit tool.use for any
+        // tool_use blocks in the assistant message content.
+        if (msg.type === 'assistant') {
+          if (msg.uuid) lastAssistantUuid = msg.uuid;
+          const content = (msg as { message?: { content?: unknown } }).message
+            ?.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (
+                block &&
+                typeof block === 'object' &&
+                (block as { type?: unknown }).type === 'tool_use'
+              ) {
+                const b = block as {
+                  name?: string;
+                  id?: string;
+                  input?: unknown;
+                };
+                let inputSummary: string | undefined;
+                try {
+                  inputSummary = JSON.stringify(b.input ?? {}).slice(0, 120);
+                } catch {
+                  inputSummary = undefined;
+                }
+                emit({
+                  kind: 'tool.use',
+                  toolName: b.name ?? 'unknown',
+                  toolUseId: b.id,
+                  inputSummary,
+                });
+              }
+            }
+          }
+        }
+
+        // tool_result blocks arrive inside synthesized user messages.
+        if (msg.type === 'user') {
+          const content = (msg as { message?: { content?: unknown } }).message
+            ?.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (
+                block &&
+                typeof block === 'object' &&
+                (block as { type?: unknown }).type === 'tool_result'
+              ) {
+                const b = block as {
+                  tool_use_id?: string;
+                  is_error?: boolean;
+                };
+                emit({
+                  kind: 'tool.result',
+                  toolUseId: b.tool_use_id,
+                  isError: Boolean(b.is_error),
+                });
+              }
+            }
+          }
         }
 
         // Emit results
         if (msg.type === 'result') {
           resultCount++;
           const res = msg as Record<string, unknown>;
-          const text = ((res.result as string) || (msg.text as string) || '').trim();
-          const cleaned = text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          const text = (
+            (res.result as string) ||
+            (msg.text as string) ||
+            ''
+          ).trim();
+          const cleaned = text
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
           log(`Result #${resultCount}: ${cleaned.slice(0, 200)}`);
           if (res.is_error) {
-            throw new Error(`Claude Code returned an error result: ${cleaned || text}`);
+            throw new Error(
+              `Claude Code returned an error result: ${cleaned || text}`,
+            );
           }
           if (cleaned) {
             resultText = cleaned;
@@ -188,11 +309,17 @@ export class ClaudeAdapter implements SdkAdapter {
           }
         }
       }
+      emitEnd('success');
+    } catch (err) {
+      emitEnd('error', err instanceof Error ? err.message : String(err));
+      throw err;
     } finally {
       ipcPolling = false;
     }
 
-    log(`Query done. Results: ${resultCount}, closedDuringQuery: ${closedDuringQuery}`);
+    log(
+      `Query done. Results: ${resultCount}, closedDuringQuery: ${closedDuringQuery}`,
+    );
     return { newSessionId, lastAssistantUuid, resultText, closedDuringQuery };
   }
 
@@ -225,9 +352,8 @@ export class ClaudeAdapter implements SdkAdapter {
         },
       })) {
         const msg = message as Record<string, unknown>;
-        const msgType = msg.type === 'system'
-          ? `system/${msg.subtype}`
-          : msg.type;
+        const msgType =
+          msg.type === 'system' ? `system/${msg.subtype}` : msg.type;
         log(`[compact] type=${msgType}`);
 
         if (msg.type === 'system' && msg.subtype === 'init') {
@@ -254,12 +380,21 @@ export class ClaudeAdapter implements SdkAdapter {
       log(`Compact error: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    log(`Compact done. boundarySeen=${compactBoundarySeen}, hadError=${hadError}`);
+    log(
+      `Compact done. boundarySeen=${compactBoundarySeen}, hadError=${hadError}`,
+    );
     if (!hadError && !compactBoundarySeen) {
-      log('WARNING: compact_boundary was not observed. Compaction may not have completed.');
+      log(
+        'WARNING: compact_boundary was not observed. Compaction may not have completed.',
+      );
     }
 
-    return { newSessionId: slashSessionId, compactBoundarySeen, hadError, resultText };
+    return {
+      newSessionId: slashSessionId,
+      compactBoundarySeen,
+      hadError,
+      resultText,
+    };
   }
 
   private createPreCompactHook(): HookCallback {
@@ -287,7 +422,9 @@ export class ClaudeAdapter implements SdkAdapter {
         fs.writeFileSync(filePath, content);
         log(`Archived conversation to ${filePath}`);
       } catch (err) {
-        log(`Failed to archive transcript: ${err instanceof Error ? err.message : String(err)}`);
+        log(
+          `Failed to archive transcript: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
 
       return {};

@@ -25,10 +25,12 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { RegisteredGroup } from './types.js';
-
-// Sentinel markers for robust output parsing (must match agent-runner)
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
+import { agentEvents, type AgentEventV1 } from './agent-events.js';
+import {
+  OUTPUT_END_MARKER,
+  OUTPUT_START_MARKER,
+  StreamMarkerParser,
+} from './marker-parser.js';
 
 /**
  * Append [1m] context suffix to Claude model strings that don't already have it.
@@ -181,6 +183,25 @@ export async function runContainerAgent(
 
     onProcess(container, containerName);
 
+    // Dashboard: announce container lifecycle. Host-side emit because the
+    // Codex adapter cannot expose tool events; this gives its card a
+    // meaningful state even without status.started from the SDK.
+    try {
+      agentEvents.emit({
+        v: 1,
+        kind: 'container.spawned',
+        ts: new Date().toISOString(),
+        groupFolder: input.groupFolder,
+        chatJid: input.chatJid,
+        containerName,
+      });
+    } catch (err) {
+      logger.warn(
+        { group: group.name, err },
+        'container.spawned event emit failed',
+      );
+    }
+
     let stdout = '';
     let stderr = '';
     let stdoutTruncated = false;
@@ -198,10 +219,68 @@ export async function runContainerAgent(
     container.stdin.write(JSON.stringify(remappedInput));
     container.stdin.end();
 
-    // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
-    let parseBuffer = '';
+    // Streaming output: parse OUTPUT and EVENT marker pairs as they arrive
     let newSessionId: string | undefined;
     let outputChain = Promise.resolve();
+
+    const markerParser = new StreamMarkerParser({
+      onOutput: onOutput
+        ? (jsonStr) => {
+            try {
+              const parsed: ContainerOutput = JSON.parse(jsonStr);
+              if (parsed.newSessionId) {
+                newSessionId = parsed.newSessionId;
+              }
+              // Remap container paths back to host paths in agent output
+              if (parsed.result) {
+                const groupHostDir = resolveGroupFolderPath(group.folder);
+                parsed.result = parsed.result
+                  .replace(/\/workspace\/group\//g, `${groupHostDir}/`)
+                  .replace(
+                    /\/workspace\/attachments\//g,
+                    `${attachmentsHostDir}/`,
+                  );
+              }
+              hadStreamingOutput = true;
+              // Activity detected — reset the hard timeout
+              resetTimeout();
+              // Call onOutput for all markers (including null results)
+              // so idle timers start even for "silent" query completions.
+              outputChain = outputChain.then(() => onOutput(parsed));
+            } catch (err) {
+              logger.warn(
+                { group: group.name, error: err },
+                'Failed to parse streamed output chunk',
+              );
+            }
+          }
+        : undefined,
+      onEvent: (jsonStr) => {
+        try {
+          const parsed = JSON.parse(jsonStr) as AgentEventV1;
+          // Defensive: drop malformed events rather than letting them reach
+          // the bus where listeners might crash.
+          if (
+            !parsed ||
+            typeof parsed !== 'object' ||
+            parsed.v !== 1 ||
+            typeof parsed.kind !== 'string'
+          ) {
+            logger.warn(
+              { group: group.name, received: parsed },
+              'Dropping malformed agent event',
+            );
+            return;
+          }
+          agentEvents.emit(parsed);
+        } catch (err) {
+          logger.warn(
+            { group: group.name, error: err },
+            'Failed to parse agent event chunk',
+          );
+        }
+      },
+    });
 
     container.stdout.on('data', (data) => {
       const chunk = data.toString();
@@ -221,48 +300,7 @@ export async function runContainerAgent(
         }
       }
 
-      // Stream-parse for output markers
-      if (onOutput) {
-        parseBuffer += chunk;
-        let startIdx: number;
-        while ((startIdx = parseBuffer.indexOf(OUTPUT_START_MARKER)) !== -1) {
-          const endIdx = parseBuffer.indexOf(OUTPUT_END_MARKER, startIdx);
-          if (endIdx === -1) break; // Incomplete pair, wait for more data
-
-          const jsonStr = parseBuffer
-            .slice(startIdx + OUTPUT_START_MARKER.length, endIdx)
-            .trim();
-          parseBuffer = parseBuffer.slice(endIdx + OUTPUT_END_MARKER.length);
-
-          try {
-            const parsed: ContainerOutput = JSON.parse(jsonStr);
-            if (parsed.newSessionId) {
-              newSessionId = parsed.newSessionId;
-            }
-            // Remap container paths back to host paths in agent output
-            if (parsed.result) {
-              const groupHostDir = resolveGroupFolderPath(group.folder);
-              parsed.result = parsed.result
-                .replace(/\/workspace\/group\//g, `${groupHostDir}/`)
-                .replace(
-                  /\/workspace\/attachments\//g,
-                  `${attachmentsHostDir}/`,
-                );
-            }
-            hadStreamingOutput = true;
-            // Activity detected — reset the hard timeout
-            resetTimeout();
-            // Call onOutput for all markers (including null results)
-            // so idle timers start even for "silent" query completions.
-            outputChain = outputChain.then(() => onOutput(parsed));
-          } catch (err) {
-            logger.warn(
-              { group: group.name, error: err },
-              'Failed to parse streamed output chunk',
-            );
-          }
-        }
-      }
+      markerParser.push(chunk);
     });
 
     container.stderr.on('data', (data) => {
@@ -322,6 +360,25 @@ export async function runContainerAgent(
     container.on('close', (code) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+
+      // Dashboard: emit container.exited before any other work. The LiveCard
+      // reducer uses this as a fallback when status.ended was lost (or when
+      // Codex — which never emits status.ended on every path — exits).
+      try {
+        agentEvents.emit({
+          v: 1,
+          kind: 'container.exited',
+          ts: new Date().toISOString(),
+          groupFolder: input.groupFolder,
+          chatJid: input.chatJid,
+          exitCode: code,
+        });
+      } catch (err) {
+        logger.warn(
+          { group: group.name, err },
+          'container.exited event emit failed',
+        );
+      }
 
       if (timedOut) {
         const ts = new Date().toISOString().replace(/[:.]/g, '-');

@@ -7,10 +7,21 @@
 import { Codex } from '@openai/codex-sdk';
 import type { Thread } from '@openai/codex-sdk';
 import {
-  writeOutput, log, drainIpcInput, shouldClose, appendConversationArchive,
+  writeOutput,
+  log,
+  drainIpcInput,
+  shouldClose,
+  appendConversationArchive,
   IPC_POLL_MS,
+  createEventEmitter,
 } from './shared.js';
-import type { SdkAdapter, SdkInitOptions, RunQueryOptions, RunQueryResult } from './sdk-adapter.js';
+import type { ContainerInput } from './shared.js';
+import type {
+  SdkAdapter,
+  SdkInitOptions,
+  RunQueryOptions,
+  RunQueryResult,
+} from './sdk-adapter.js';
 
 export class CodexAdapter implements SdkAdapter {
   private codex!: Codex;
@@ -25,9 +36,11 @@ export class CodexAdapter implements SdkAdapter {
     additionalDirectories?: string[];
   };
   private assistantName?: string;
+  private containerInput!: ContainerInput;
 
   init(options: SdkInitOptions): void {
     this.assistantName = options.containerInput.assistantName;
+    this.containerInput = options.containerInput;
 
     this.codex = new Codex({
       config: {
@@ -53,7 +66,8 @@ export class CodexAdapter implements SdkAdapter {
       sandboxMode: 'danger-full-access',
       networkAccessEnabled: true,
       webSearchEnabled: true,
-      additionalDirectories: options.extraDirs.length > 0 ? options.extraDirs : undefined,
+      additionalDirectories:
+        options.extraDirs.length > 0 ? options.extraDirs : undefined,
     };
   }
 
@@ -66,7 +80,9 @@ export class CodexAdapter implements SdkAdapter {
         log(`Resuming thread: ${sessionId}`);
         return this.thread;
       } catch (err) {
-        log(`Failed to resume thread ${sessionId}, starting fresh: ${err instanceof Error ? err.message : String(err)}`);
+        log(
+          `Failed to resume thread ${sessionId}, starting fresh: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     this.thread = this.codex.startThread(this.threadOpts);
@@ -74,10 +90,30 @@ export class CodexAdapter implements SdkAdapter {
     return this.thread;
   }
 
-  async runQuery(prompt: string, options: RunQueryOptions): Promise<RunQueryResult> {
+  async runQuery(
+    prompt: string,
+    options: RunQueryOptions,
+  ): Promise<RunQueryResult> {
     const abortController = new AbortController();
     let closedDuringQuery = false;
     let ipcPolling = true;
+
+    // Dashboard event stream. Codex SDK does not expose tool_use as discrete
+    // events (only the rendered item.text post-execution), so we emit only
+    // the coarse status.* lifecycle. The host additionally emits
+    // container.spawned/exited, giving Codex cards a meaningful state.
+    const emit = createEventEmitter(this.containerInput);
+    let statusStartedEmitted = false;
+    let endedEmitted = false;
+    const emitEnd = (outcome: 'success' | 'error', error?: string): void => {
+      if (endedEmitted) return;
+      endedEmitted = true;
+      if (!statusStartedEmitted) {
+        emit({ kind: 'status.started', sdk: 'codex' });
+        statusStartedEmitted = true;
+      }
+      emit({ kind: 'status.ended', outcome, error });
+    };
 
     // IPC polling: close sentinel only, mid-turn messages are drained and dropped
     const pollIpc = () => {
@@ -110,14 +146,28 @@ export class CodexAdapter implements SdkAdapter {
           case 'thread.started':
             newSessionId = (event as { thread_id: string }).thread_id;
             log(`Thread initialized: ${newSessionId}`);
+            if (!statusStartedEmitted) {
+              emit({
+                kind: 'status.started',
+                sdk: 'codex',
+                sessionId: newSessionId,
+              });
+              statusStartedEmitted = true;
+            }
             break;
 
           case 'item.completed': {
-            const item = (event as { item: { type: string; text?: string; message?: string } }).item;
+            const item = (
+              event as {
+                item: { type: string; text?: string; message?: string };
+              }
+            ).item;
             if (item.type === 'agent_message' && item.text) {
               resultCount++;
               const text = item.text.trim();
-              const cleaned = text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+              const cleaned = text
+                .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+                .trim();
               log(`Result #${resultCount}: ${cleaned.slice(0, 200)}`);
               if (cleaned) {
                 resultText = cleaned;
@@ -147,10 +197,13 @@ export class CodexAdapter implements SdkAdapter {
           }
         }
       }
+      emitEnd('success');
     } catch (err) {
       if (closedDuringQuery && (err as Error).name === 'AbortError') {
         log('Turn aborted by close sentinel');
+        emitEnd('success');
       } else {
+        emitEnd('error', err instanceof Error ? err.message : String(err));
         throw err;
       }
     } finally {
@@ -159,7 +212,9 @@ export class CodexAdapter implements SdkAdapter {
 
     appendConversationArchive(prompt, resultText, this.assistantName);
 
-    log(`Query done. Results: ${resultCount}, closedDuringQuery: ${closedDuringQuery}`);
+    log(
+      `Query done. Results: ${resultCount}, closedDuringQuery: ${closedDuringQuery}`,
+    );
     return { newSessionId, resultText, closedDuringQuery };
   }
 }

@@ -13,6 +13,9 @@ export const IPC_POLL_MS = 500;
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
+const EVENT_START_MARKER = '---NANOCLAW_EVENT_V1_START---';
+const EVENT_END_MARKER = '---NANOCLAW_EVENT_V1_END---';
+
 export interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -39,6 +42,88 @@ export function writeOutput(output: ContainerOutput): void {
   console.log(OUTPUT_END_MARKER);
 }
 
+/**
+ * Event schema v1 — wire format between agent-runner and the host dashboard.
+ * Mirror of src/agent-events.ts AgentEventV1, minus host-only events
+ * (container.spawned/container.exited) which the host emits itself.
+ */
+interface EventBase {
+  v: 1;
+  kind: string;
+  ts: string;
+  groupFolder: string;
+  chatJid?: string;
+}
+
+export type AgentEventV1Payload =
+  | (EventBase & {
+      kind: 'status.started';
+      sdk: 'claude' | 'codex';
+      sessionId?: string;
+    })
+  | (EventBase & {
+      kind: 'status.ended';
+      outcome: 'success' | 'error';
+      error?: string;
+    })
+  | (EventBase & {
+      kind: 'tool.use';
+      toolName: string;
+      toolUseId?: string;
+      inputSummary?: string;
+    })
+  | (EventBase & {
+      kind: 'tool.result';
+      toolUseId?: string;
+      isError: boolean;
+    });
+
+type EventInput =
+  | { kind: 'status.started'; sdk: 'claude' | 'codex'; sessionId?: string }
+  | { kind: 'status.ended'; outcome: 'success' | 'error'; error?: string }
+  | {
+      kind: 'tool.use';
+      toolName: string;
+      toolUseId?: string;
+      inputSummary?: string;
+    }
+  | { kind: 'tool.result'; toolUseId?: string; isError: boolean };
+
+export type AgentEventEmitter = (ev: EventInput) => void;
+
+/**
+ * Write a single EVENT_V1 marker block to stdout. Host's container-runner
+ * parser pulls these out of the stream alongside OUTPUT markers. Emission
+ * must never throw — bad event data cannot be allowed to break the agent.
+ */
+export function writeEvent(ev: AgentEventV1Payload): void {
+  try {
+    console.log(EVENT_START_MARKER);
+    console.log(JSON.stringify(ev));
+    console.log(EVENT_END_MARKER);
+  } catch {
+    // ignore — event emission is best-effort
+  }
+}
+
+/**
+ * Returns an emitter with groupFolder/chatJid bound from ContainerInput.
+ * Adapters get a zero-boilerplate `emit({kind:'tool.use',toolName:'Read'})`
+ * call site.
+ */
+export function createEventEmitter(input: ContainerInput): AgentEventEmitter {
+  return (ev) => {
+    const payload = {
+      v: 1 as const,
+      ts: new Date().toISOString(),
+      groupFolder: input.groupFolder,
+      chatJid: input.chatJid,
+      ...ev,
+    };
+    writeEvent(payload as AgentEventV1Payload);
+  };
+}
+
 export function log(message: string): void {
   console.error(`[agent-runner] ${message}`);
 }
@@ -48,7 +133,11 @@ export function log(message: string): void {
  */
 export function shouldClose(): boolean {
   if (fs.existsSync(IPC_INPUT_CLOSE_SENTINEL)) {
-    try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL);
+    } catch {
+      /* ignore */
+    }
     return true;
   }
   return false;
@@ -61,8 +150,9 @@ export function shouldClose(): boolean {
 export function drainIpcInput(): string[] {
   try {
     fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
-    const files = fs.readdirSync(IPC_INPUT_DIR)
-      .filter(f => f.endsWith('.json'))
+    const files = fs
+      .readdirSync(IPC_INPUT_DIR)
+      .filter((f) => f.endsWith('.json'))
       .sort();
 
     const messages: string[] = [];
@@ -75,8 +165,14 @@ export function drainIpcInput(): string[] {
           messages.push(data.text);
         }
       } catch (err) {
-        log(`Failed to process input file ${file}: ${err instanceof Error ? err.message : String(err)}`);
-        try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+        log(
+          `Failed to process input file ${file}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        try {
+          fs.unlinkSync(filePath);
+        } catch {
+          /* ignore */
+        }
       }
     }
     return messages;
@@ -112,7 +208,11 @@ export function waitForIpcMessage(): Promise<string | null> {
  * Append a conversation turn to the archive file.
  * Used by Codex adapter. Claude adapter uses PreCompactHook instead.
  */
-export function appendConversationArchive(prompt: string, result: string | null, assistantName?: string): void {
+export function appendConversationArchive(
+  prompt: string,
+  result: string | null,
+  assistantName?: string,
+): void {
   if (!result) return;
 
   const conversationsDir = '/workspace/group/conversations';
@@ -124,7 +224,9 @@ export function appendConversationArchive(prompt: string, result: string | null,
 
   const sender = assistantName || 'Assistant';
   const timestamp = new Date().toLocaleString('en-US', {
-    hour: 'numeric', minute: '2-digit', hour12: true,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
   });
 
   const entry = [
