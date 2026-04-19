@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Inbox, RefreshCw } from 'lucide-react';
+import { Inbox } from 'lucide-react';
 import { fetchLiveGroups } from '../lib/api';
 import { liveStore, useLiveGroups } from '../lib/live-store';
 import { GroupLiveCard } from '../components/GroupLiveCard';
@@ -37,27 +37,11 @@ export function LivePage() {
   return (
     <div className="px-4 py-5 sm:px-6 sm:py-6">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-xs text-muted-foreground">
-              {total > 0
-                ? `${total}개 그룹 · ${running}개 동작중`
-                : '등록된 그룹 없음'}
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => query.refetch()}
-            disabled={query.isFetching}
-            aria-label="새로고침"
-          >
-            <RefreshCw
-              className={query.isFetching ? 'animate-spin' : undefined}
-            />
-            <span className="hidden sm:inline">새로고침</span>
-          </Button>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          {total > 0
+            ? `${total}개 그룹 · ${running}개 동작중 · 이벤트는 WebSocket 으로 실시간 반영`
+            : '등록된 그룹 없음'}
+        </p>
 
         {query.isLoading && groups.length === 0 ? (
           <LoadingSkeleton />

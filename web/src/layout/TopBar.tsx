@@ -63,7 +63,7 @@ function WsBadge({ status }: { status: ReturnType<typeof useWsStatus> }) {
       error: 'destructive',
     };
   return (
-    <Badge variant={variant[status]} className="hidden sm:inline-flex">
+    <Badge variant={variant[status]}>
       <span
         className={cn(
           'size-1.5 rounded-full bg-current',
