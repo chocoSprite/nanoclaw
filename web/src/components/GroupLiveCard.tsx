@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+import { Bot, Sparkles } from 'lucide-react';
+import { Card, CardContent, CardHeader } from './ui/card';
+import { Badge } from './ui/badge';
+import { cn } from '../lib/utils';
 import type { LiveGroupState } from '../contracts';
 
 interface Props {
@@ -6,79 +10,80 @@ interface Props {
 }
 
 const STATUS_DOT: Record<LiveGroupState['containerStatus'], string> = {
-  idle: 'bg-slate-500',
-  running: 'bg-emerald-400 animate-pulse',
-  error: 'bg-rose-500',
+  idle: 'bg-muted-foreground/50',
+  running: 'bg-success animate-pulse',
+  error: 'bg-destructive',
 };
 
-const SDK_BADGE: Record<LiveGroupState['sdk'], string> = {
-  claude: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  codex: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+const STATUS_LABEL: Record<LiveGroupState['containerStatus'], string> = {
+  idle: 'idle',
+  running: 'running',
+  error: 'error',
 };
 
 export function GroupLiveCard({ group }: Props) {
   const idle = group.containerStatus === 'idle';
   const elapsedSec = useElapsedSec(group.lastToolAt);
   const stuck =
-    group.containerStatus === 'running' && elapsedSec !== null && elapsedSec > 60;
+    group.containerStatus === 'running' &&
+    elapsedSec !== null &&
+    elapsedSec > 60;
+  const SdkIcon = group.sdk === 'claude' ? Sparkles : Bot;
 
   return (
-    <div
-      className={[
-        'rounded-lg border border-slate-700/60 bg-slate-900/60 p-4',
-        'flex flex-col gap-2 transition-opacity',
-        idle ? 'opacity-50' : 'opacity-100',
-      ].join(' ')}
+    <Card
+      className={cn(
+        'transition-opacity',
+        idle && 'opacity-60',
+      )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className={[
-              'inline-block h-2.5 w-2.5 rounded-full shrink-0',
-              STATUS_DOT[group.containerStatus],
-            ].join(' ')}
-          />
-          <span className="truncate text-sm font-medium text-slate-100">
-            {group.name}
-          </span>
+      <CardHeader className="gap-2 pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                'inline-block size-2 shrink-0 rounded-full',
+                STATUS_DOT[group.containerStatus],
+              )}
+              aria-label={STATUS_LABEL[group.containerStatus]}
+            />
+            <span className="truncate text-sm font-semibold">{group.name}</span>
+          </div>
+          <Badge variant={group.sdk === 'claude' ? 'info' : 'warning'}>
+            <SdkIcon className="size-3" />
+            {group.sdk}
+          </Badge>
         </div>
-        <span
-          className={[
-            'text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border',
-            SDK_BADGE[group.sdk],
-          ].join(' ')}
-        >
-          {group.sdk}
-        </span>
-      </div>
+        <div className="truncate font-mono text-[11px] text-muted-foreground">
+          {group.groupFolder}
+        </div>
+      </CardHeader>
 
-      <div className="text-xs text-slate-400 truncate">
-        {group.groupFolder}
-      </div>
-
-      <div className="flex items-center justify-between gap-2 pt-1">
+      <CardContent className="flex items-center justify-between gap-2 pt-0">
         <div
-          className={[
-            'text-sm font-mono truncate',
+          className={cn(
+            'min-w-0 flex-1 truncate font-mono text-sm',
             group.currentTool
-              ? 'text-slate-200'
-              : 'text-slate-500 italic',
-          ].join(' ')}
+              ? 'text-foreground'
+              : 'italic text-muted-foreground',
+          )}
         >
           {group.currentTool ?? 'idle'}
         </div>
         {group.containerStatus === 'running' && elapsedSec !== null && (
-          <div
-            className={[
-              'text-xs tabular-nums shrink-0',
-              stuck ? 'text-rose-400 animate-pulse' : 'text-slate-500',
-            ].join(' ')}
+          <span
+            className={cn(
+              'shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tabular-nums',
+              stuck
+                ? 'border-destructive/30 bg-destructive/10 text-destructive animate-pulse'
+                : 'border-border text-muted-foreground',
+            )}
           >
             {elapsedSec}s
-          </div>
+          </span>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 

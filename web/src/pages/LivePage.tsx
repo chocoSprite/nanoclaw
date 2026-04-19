@@ -1,19 +1,17 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Inbox, RefreshCw } from 'lucide-react';
 import { fetchLiveGroups } from '../lib/api';
-import { liveStore, useLiveGroups, useWsStatus } from '../lib/live-store';
+import { liveStore, useLiveGroups } from '../lib/live-store';
 import { GroupLiveCard } from '../components/GroupLiveCard';
+import { Skeleton } from '../components/ui/skeleton';
+import { Button } from '../components/ui/button';
+import { Card, CardContent } from '../components/ui/card';
 
 /**
- * P0 LivePage — answers "what is every registered group doing right now?"
- *
- * Hydration order:
- *   1. TanStack Query fetches /api/groups/live for the initial snapshot.
- *   2. WsClient opens /ws and receives a `snapshot` frame (also hydrates).
- *   3. Subsequent `event` frames mutate the store via the shared reducer.
- *
- * The WS snapshot wins if it arrives second, which is fine — same shape,
- * same data, just fresher.
+ * Live — the dashboard's primary view. Answers "what is every registered
+ * group doing right now?" via a snapshot from /api/groups/live then
+ * mutates per group on each agent event pushed over the WS hub.
  */
 export function LivePage() {
   const query = useQuery({
@@ -33,64 +31,92 @@ export function LivePage() {
   }, []);
 
   const groups = useLiveGroups();
-  const wsStatus = useWsStatus();
+  const running = groups.filter((g) => g.containerStatus === 'running').length;
+  const total = groups.length;
 
   return (
-    <div className="min-h-screen px-6 py-6">
-      <header className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-100">NanoClaw Live</h1>
-          <p className="text-xs text-slate-500">
-            등록된 모든 그룹의 현재 상태 — tool.use 실시간 반영
-          </p>
+    <div className="px-4 py-5 sm:px-6 sm:py-6">
+      <div className="mx-auto flex max-w-5xl flex-col gap-5">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs text-muted-foreground">
+              {total > 0
+                ? `${total}개 그룹 · ${running}개 동작중`
+                : '등록된 그룹 없음'}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => query.refetch()}
+            disabled={query.isFetching}
+            aria-label="새로고침"
+          >
+            <RefreshCw
+              className={query.isFetching ? 'animate-spin' : undefined}
+            />
+            <span className="hidden sm:inline">새로고침</span>
+          </Button>
         </div>
-        <WsStatusBadge status={wsStatus} />
-      </header>
 
-      {query.isLoading && groups.length === 0 ? (
-        <div className="text-sm text-slate-500">Loading…</div>
-      ) : query.isError && groups.length === 0 ? (
-        <div className="text-sm text-rose-400">
-          /api/groups/live 호출 실패 — 서버가 떠 있는지 확인
-        </div>
-      ) : groups.length === 0 ? (
-        <div className="text-sm text-slate-500">등록된 그룹이 없음</div>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {groups.map((g) => (
-            <GroupLiveCard key={g.jid} group={g} />
-          ))}
-        </div>
-      )}
+        {query.isLoading && groups.length === 0 ? (
+          <LoadingSkeleton />
+        ) : query.isError && groups.length === 0 ? (
+          <ErrorState onRetry={() => query.refetch()} />
+        ) : groups.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {groups.map((g) => (
+              <GroupLiveCard key={g.jid} group={g} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function WsStatusBadge({
-  status,
-}: {
-  status: ReturnType<typeof useWsStatus>;
-}) {
-  const label: Record<typeof status, string> = {
-    connecting: 'connecting',
-    open: 'live',
-    closed: 'reconnecting',
-    error: 'error',
-  };
-  const color: Record<typeof status, string> = {
-    connecting: 'text-amber-300 border-amber-500/40',
-    open: 'text-emerald-300 border-emerald-500/40',
-    closed: 'text-slate-400 border-slate-600',
-    error: 'text-rose-300 border-rose-500/40',
-  };
+function LoadingSkeleton() {
   return (
-    <span
-      className={[
-        'text-[10px] uppercase tracking-wide px-2 py-1 rounded border',
-        color[status],
-      ].join(' ')}
-    >
-      ws: {label[status]}
-    </span>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} className="h-[118px]" />
+      ))}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+        <Inbox className="size-8 text-muted-foreground" />
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium">등록된 그룹이 없습니다</p>
+          <p className="text-xs text-muted-foreground">
+            Slack 채널에 봇을 초대하고 등록 트리거를 실행하면 여기 나타납니다.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Card className="border-destructive/30">
+      <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+        <p className="text-sm font-medium text-destructive">
+          /api/groups/live 호출에 실패했습니다
+        </p>
+        <p className="text-xs text-muted-foreground">
+          서버가 떠 있는지 확인해주세요
+        </p>
+        <Button size="sm" variant="outline" onClick={onRetry}>
+          다시 시도
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
