@@ -34,19 +34,19 @@ export interface RunCompactResult {
 export interface SdkInitOptions {
   mcpServerPath: string;
   containerInput: ContainerInput;
-  instructions: string;        // Group + global merged (Codex: prepend to user turn)
-  globalInstructions: string;  // Global CLAUDE.md only (Claude: systemPrompt.append)
+  instructions: string; // Group + global merged (Codex: prepend to user turn)
+  globalInstructions: string; // Global CLAUDE.md only (Claude: systemPrompt.append)
   extraDirs: string[];
 }
 
 export interface RunQueryOptions {
   sessionId?: string;
-  resumeAt?: string;  // Claude only: assistant UUID for granular resume
+  resumeAt?: string; // Claude only: assistant UUID for granular resume
 }
 
 export interface RunQueryResult {
   newSessionId?: string;
-  lastAssistantUuid?: string;  // Claude only
+  lastAssistantUuid?: string; // Claude only
   resultText: string | null;
   closedDuringQuery: boolean;
 }

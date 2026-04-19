@@ -20,8 +20,12 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
-  writeOutput, log, drainIpcInput, waitForIpcMessage,
-  IPC_INPUT_DIR, IPC_INPUT_CLOSE_SENTINEL,
+  writeOutput,
+  log,
+  drainIpcInput,
+  waitForIpcMessage,
+  IPC_INPUT_DIR,
+  IPC_INPUT_CLOSE_SENTINEL,
 } from './shared.js';
 import type { ContainerInput } from './shared.js';
 import type { SdkAdapter } from './sdk-adapter.js';
@@ -71,7 +75,9 @@ async function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', chunk => { data += chunk; });
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+    });
     process.stdin.on('end', () => resolve(data));
     process.stdin.on('error', reject);
   });
@@ -91,39 +97,46 @@ async function runScript(script: string): Promise<ScriptResult | null> {
   fs.writeFileSync(scriptPath, script, { mode: 0o755 });
 
   return new Promise((resolve) => {
-    execFile('bash', [scriptPath], {
-      timeout: SCRIPT_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-      env: process.env,
-    }, (error, stdout, stderr) => {
-      if (stderr) {
-        log(`Script stderr: ${stderr.slice(0, 500)}`);
-      }
+    execFile(
+      'bash',
+      [scriptPath],
+      {
+        timeout: SCRIPT_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+        env: process.env,
+      },
+      (error, stdout, stderr) => {
+        if (stderr) {
+          log(`Script stderr: ${stderr.slice(0, 500)}`);
+        }
 
-      if (error) {
-        log(`Script error: ${error.message}`);
-        return resolve(null);
-      }
-
-      const lines = stdout.trim().split('\n');
-      const lastLine = lines[lines.length - 1];
-      if (!lastLine) {
-        log('Script produced no output');
-        return resolve(null);
-      }
-
-      try {
-        const result = JSON.parse(lastLine);
-        if (typeof result.wakeAgent !== 'boolean') {
-          log(`Script output missing wakeAgent boolean: ${lastLine.slice(0, 200)}`);
+        if (error) {
+          log(`Script error: ${error.message}`);
           return resolve(null);
         }
-        resolve(result as ScriptResult);
-      } catch {
-        log(`Script output is not valid JSON: ${lastLine.slice(0, 200)}`);
-        resolve(null);
-      }
-    });
+
+        const lines = stdout.trim().split('\n');
+        const lastLine = lines[lines.length - 1];
+        if (!lastLine) {
+          log('Script produced no output');
+          return resolve(null);
+        }
+
+        try {
+          const result = JSON.parse(lastLine);
+          if (typeof result.wakeAgent !== 'boolean') {
+            log(
+              `Script output missing wakeAgent boolean: ${lastLine.slice(0, 200)}`,
+            );
+            return resolve(null);
+          }
+          resolve(result as ScriptResult);
+        } catch {
+          log(`Script output is not valid JSON: ${lastLine.slice(0, 200)}`);
+          resolve(null);
+        }
+      },
+    );
   });
 }
 
@@ -146,13 +159,17 @@ async function main(): Promise<void> {
   try {
     const stdinData = await readStdin();
     containerInput = JSON.parse(stdinData);
-    try { fs.unlinkSync('/tmp/input.json'); } catch { /* may not exist */ }
+    try {
+      fs.unlinkSync('/tmp/input.json');
+    } catch {
+      /* may not exist */
+    }
     log(`Received input for group: ${containerInput.groupFolder}`);
   } catch (err) {
     writeOutput({
       status: 'error',
       result: null,
-      error: `Failed to parse input: ${err instanceof Error ? err.message : String(err)}`
+      error: `Failed to parse input: ${err instanceof Error ? err.message : String(err)}`,
     });
     process.exit(1);
   }
@@ -184,7 +201,11 @@ async function main(): Promise<void> {
 
   // Prepare IPC
   fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
-  try { fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL); } catch { /* ignore */ }
+  try {
+    fs.unlinkSync(IPC_INPUT_CLOSE_SENTINEL);
+  } catch {
+    /* ignore */
+  }
 
   // Build initial prompt (SDK-specific instruction injection)
   let prompt: string;
@@ -217,22 +238,36 @@ async function main(): Promise<void> {
 
     if (!result) {
       log('Adapter does not support compact, skipping');
-      writeOutput({ status: 'success', result: 'Compact is not supported by this SDK.' });
+      writeOutput({
+        status: 'success',
+        result: 'Compact is not supported by this SDK.',
+      });
       return;
     }
 
     if (result.hadError) {
-      writeOutput({ status: 'error', result: null, error: 'Session command failed.', newSessionId: result.newSessionId });
+      writeOutput({
+        status: 'error',
+        result: null,
+        error: 'Session command failed.',
+        newSessionId: result.newSessionId,
+      });
     } else {
       writeOutput({
         status: 'success',
-        result: result.resultText || (result.compactBoundarySeen
-          ? 'Conversation compacted.'
-          : 'Compaction requested but compact_boundary was not observed.'),
+        result:
+          result.resultText ||
+          (result.compactBoundarySeen
+            ? 'Conversation compacted.'
+            : 'Compaction requested but compact_boundary was not observed.'),
         newSessionId: result.newSessionId,
       });
       // Emit session-only marker so host updates session tracking
-      writeOutput({ status: 'success', result: null, newSessionId: result.newSessionId });
+      writeOutput({
+        status: 'success',
+        result: null,
+        newSessionId: result.newSessionId,
+      });
     }
     return;
   }
@@ -244,7 +279,9 @@ async function main(): Promise<void> {
     const scriptResult = await runScript(containerInput.script);
 
     if (!scriptResult || !scriptResult.wakeAgent) {
-      const reason = scriptResult ? 'wakeAgent=false' : 'script error/no output';
+      const reason = scriptResult
+        ? 'wakeAgent=false'
+        : 'script error/no output';
       log(`Script decided not to wake agent: ${reason}`);
       writeOutput({ status: 'success', result: null });
       return;
@@ -271,7 +308,10 @@ async function main(): Promise<void> {
           log(`Session ${sessionId} not found, retrying without resume`);
           sessionId = undefined;
           resumeAt = undefined;
-          result = await adapter.runQuery(prompt, { sessionId: undefined, resumeAt: undefined });
+          result = await adapter.runQuery(prompt, {
+            sessionId: undefined,
+            resumeAt: undefined,
+          });
         } else {
           throw err;
         }
