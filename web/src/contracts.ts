@@ -17,6 +17,8 @@ export interface LiveGroupState {
   lastToolAt: string | null;
   containerStatus: ContainerStatus;
   sdk: SdkKind;
+  /** ms since epoch when pendingMessages flipped true on the server, null if no pending. */
+  pendingSinceTs: number | null;
 }
 
 export interface RegisteredGroupLite {

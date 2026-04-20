@@ -44,6 +44,7 @@ function emptyQueueStatus(jid: string, active = false): QueueStatus {
     idleWaiting: false,
     isTask: false,
     pendingMessages: false,
+    pendingSinceTs: null,
     pendingTaskCount: 0,
     runningTaskId: null,
   };
@@ -189,6 +190,31 @@ describe('GroupsService', () => {
       exitCode: 1,
     });
     expect(svc.listLive()[0].containerStatus).toBe('error');
+  });
+
+  it('pendingSinceTs passes through from queue (null when no pending)', () => {
+    const state = new FakeStateReader([
+      { jid: 'slack:A', group: group('alpha') },
+    ]);
+    const queue = new FakeQueueReader([emptyQueueStatus('slack:A', true)]);
+    const svc = new GroupsService(state, queue, new LiveStateCache());
+    expect(svc.listLive()[0].pendingSinceTs).toBeNull();
+  });
+
+  it('pendingSinceTs passes through from queue when set', () => {
+    const state = new FakeStateReader([
+      { jid: 'slack:A', group: group('alpha') },
+    ]);
+    const ts = Date.now() - 90_000;
+    const queue = new FakeQueueReader([
+      {
+        ...emptyQueueStatus('slack:A', true),
+        pendingMessages: true,
+        pendingSinceTs: ts,
+      },
+    ]);
+    const svc = new GroupsService(state, queue, new LiveStateCache());
+    expect(svc.listLive()[0].pendingSinceTs).toBe(ts);
   });
 
   it('listRoster flags queue.active accurately', () => {

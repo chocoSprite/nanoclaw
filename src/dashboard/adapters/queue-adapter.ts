@@ -6,6 +6,8 @@ export interface QueueStatus {
   idleWaiting: boolean;
   isTask: boolean;
   pendingMessages: boolean;
+  /** ms since epoch when pendingMessages first flipped true, or null if not pending. */
+  pendingSinceTs: number | null;
   pendingTaskCount: number;
   runningTaskId: string | null;
 }

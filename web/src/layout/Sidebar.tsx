@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom';
 import {
   Activity,
   CalendarClock,
-  Heart,
   ScrollText,
   type LucideIcon,
 } from 'lucide-react';
@@ -28,13 +27,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Automation',
     description: '예약 작업 · cron',
     icon: CalendarClock,
-  },
-  {
-    to: '/health',
-    label: 'Health',
-    description: '시스템 · 인증 · 에러',
-    icon: Heart,
-    disabled: true,
   },
   {
     to: '/logs',

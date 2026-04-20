@@ -20,6 +20,8 @@ interface GroupState {
   isTaskContainer: boolean;
   runningTaskId: string | null;
   pendingMessages: boolean;
+  /** ms since epoch when pendingMessages first flipped to true. Reset when container actually starts. */
+  pendingSinceTs: number | null;
   pendingTasks: QueuedTask[];
   process: ChildProcess | null;
   containerName: string | null;
@@ -44,6 +46,7 @@ export class GroupQueue {
         isTaskContainer: false,
         runningTaskId: null,
         pendingMessages: false,
+        pendingSinceTs: null,
         pendingTasks: [],
         process: null,
         containerName: null,
@@ -71,12 +74,14 @@ export class GroupQueue {
 
     if (state.active) {
       state.pendingMessages = true;
+      if (!state.pendingSinceTs) state.pendingSinceTs = Date.now();
       logger.debug({ groupJid }, 'Container active, message queued');
       return;
     }
 
     if (this.activeCount >= MAX_CONCURRENT_CONTAINERS) {
       state.pendingMessages = true;
+      if (!state.pendingSinceTs) state.pendingSinceTs = Date.now();
       if (!this.waitingGroups.includes(groupJid)) {
         this.waitingGroups.push(groupJid);
       }
@@ -230,6 +235,7 @@ export class GroupQueue {
     state.idleWaiting = false;
     state.isTaskContainer = false;
     state.pendingMessages = false;
+    state.pendingSinceTs = null;
     this.activeCount++;
 
     logger.debug(
@@ -379,6 +385,7 @@ export class GroupQueue {
     idleWaiting: boolean;
     isTask: boolean;
     pendingMessages: boolean;
+    pendingSinceTs: number | null;
     pendingTaskCount: number;
     runningTaskId: string | null;
   }> {
@@ -390,6 +397,7 @@ export class GroupQueue {
         idleWaiting: s.idleWaiting,
         isTask: s.isTaskContainer,
         pendingMessages: s.pendingMessages,
+        pendingSinceTs: s.pendingSinceTs,
         pendingTaskCount: s.pendingTasks.length,
         runningTaskId: s.runningTaskId,
       });

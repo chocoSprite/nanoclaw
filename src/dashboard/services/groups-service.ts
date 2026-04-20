@@ -40,6 +40,7 @@ export class GroupsService {
         lastToolAt: live?.lastToolAt ?? null,
         containerStatus,
         sdk: (group.sdk ?? 'codex') as SdkKind,
+        pendingSinceTs: q?.pendingSinceTs ?? null,
       });
     }
     return out;

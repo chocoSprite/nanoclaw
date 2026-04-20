@@ -24,10 +24,12 @@ const STATUS_LABEL: Record<LiveGroupState['containerStatus'], string> = {
 export function GroupLiveCard({ group }: Props) {
   const idle = group.containerStatus === 'idle';
   const elapsedSec = useElapsedSec(group.lastToolAt);
+  const pendingSec = useElapsedFromMs(group.pendingSinceTs);
   const stuck =
     group.containerStatus === 'running' &&
     elapsedSec !== null &&
     elapsedSec > 60;
+  const pendingStuck = pendingSec !== null && pendingSec > 60;
   const SdkIcon = group.sdk === 'claude' ? Sparkles : Bot;
 
   return (
@@ -65,6 +67,20 @@ export function GroupLiveCard({ group }: Props) {
         >
           {group.currentTool ?? 'idle'}
         </div>
+        {pendingSec !== null && (
+          <span
+            className={cn(
+              'shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tabular-nums',
+              pendingStuck
+                ? 'border-destructive/30 bg-destructive/10 text-destructive animate-pulse'
+                : 'border-warning/40 bg-warning/10 text-warning',
+            )}
+            aria-label="pending lag"
+            title="메시지 대기 시간"
+          >
+            ⏳ {pendingSec}s
+          </span>
+        )}
         {group.containerStatus === 'running' && elapsedSec !== null && (
           <span
             className={cn(
@@ -93,4 +109,15 @@ function useElapsedSec(lastToolAt: string | null): number | null {
   const t = Date.parse(lastToolAt);
   if (Number.isNaN(t)) return null;
   return Math.max(0, Math.floor((now - t) / 1000));
+}
+
+function useElapsedFromMs(sinceMs: number | null): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (sinceMs == null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(id);
+  }, [sinceMs]);
+  if (sinceMs == null) return null;
+  return Math.max(0, Math.floor((now - sinceMs) / 1000));
 }
