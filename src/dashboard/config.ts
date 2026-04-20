@@ -66,3 +66,23 @@ export function isValidClaudeModel(value: unknown): value is ClaudeModelId {
     (CLAUDE_MODEL_WHITELIST as readonly string[]).includes(value)
   );
 }
+
+/**
+ * Whitelist of Codex model IDs the dashboard accepts. Narrow by design —
+ * Codex CLI happily passes arbitrary strings through to the model config,
+ * so the whitelist protects against typos silently failing at run time.
+ * Update together with `web/src/contracts.ts::CODEX_MODELS` and
+ * `CODEX_DEFAULT_MODEL_DISPLAY` when Codex CLI upgrades its default.
+ *
+ * `null` means "fall back to ~/.codex/config.toml's global default".
+ */
+export const CODEX_MODEL_WHITELIST = ['gpt-5.4', 'gpt-5', 'o3'] as const;
+
+export type CodexModelId = (typeof CODEX_MODEL_WHITELIST)[number];
+
+export function isValidCodexModel(value: unknown): value is CodexModelId {
+  return (
+    typeof value === 'string' &&
+    (CODEX_MODEL_WHITELIST as readonly string[]).includes(value)
+  );
+}

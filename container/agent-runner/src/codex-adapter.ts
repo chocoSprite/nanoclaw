@@ -34,6 +34,7 @@ export class CodexAdapter implements SdkAdapter {
     networkAccessEnabled: boolean;
     webSearchEnabled: boolean;
     additionalDirectories?: string[];
+    model?: string;
   };
   private assistantName?: string;
   private containerInput!: ContainerInput;
@@ -68,6 +69,13 @@ export class CodexAdapter implements SdkAdapter {
       webSearchEnabled: true,
       additionalDirectories:
         options.extraDirs.length > 0 ? options.extraDirs : undefined,
+      // Per-group model override. When unset, Codex CLI falls back to
+      // ~/.codex/config.toml's global default. Spread-conditionally so we
+      // never pass `model: undefined` — the SDK would forward it as a
+      // literal `undefined` TOML override.
+      ...(options.containerInput.model
+        ? { model: options.containerInput.model }
+        : {}),
     };
   }
 

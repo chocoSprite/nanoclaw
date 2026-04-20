@@ -13,7 +13,7 @@ import type { RegisteredGroup } from '../../types.js';
 import type { StateReader } from '../adapters/state-adapter.js';
 import type { SkillScanner, SkillEntry } from './skill-scanner.js';
 import type { SdkKind } from '../events.js';
-import { isValidClaudeModel } from '../config.js';
+import { isValidClaudeModel, isValidCodexModel } from '../config.js';
 
 export type BotRole = 'main' | 'pat' | 'mat' | 'solo';
 
@@ -35,10 +35,22 @@ export interface GroupEditorView {
   session: GroupSessionInfo;
 }
 
-export type PatchError = 'not_found' | 'not_claude' | 'invalid_model';
+export type PatchError = 'not_found' | 'invalid_model';
 export type PatchResult =
   | { ok: true; view: GroupEditorView }
   | { ok: false; error: PatchError };
+
+/**
+ * Delegate validation to the sdk-specific whitelist. Both Claude and Codex
+ * now accept per-group model override (see `CLAUDE_MODEL_WHITELIST` /
+ * `CODEX_MODEL_WHITELIST` in `../config.ts`). An unknown sdk falls through
+ * to false, which surfaces as `invalid_model` to the caller.
+ */
+function isValidModelForSdk(sdk: SdkKind, model: string): boolean {
+  if (sdk === 'claude') return isValidClaudeModel(model);
+  if (sdk === 'codex') return isValidCodexModel(model);
+  return false;
+}
 
 export interface GroupsEditorServiceDeps {
   state: StateReader;
@@ -105,18 +117,17 @@ export class GroupsEditorService {
   /**
    * Apply a model change:
    *   - 404 equivalent when the JID is unknown
-   *   - 400 equivalent when the group is not a Claude group (Codex has no
-   *     model switch) or the value is not in the whitelist
+   *   - 400 equivalent when the value is not in the group's sdk whitelist
+   *     (Claude and Codex each have their own small whitelist; `null`
+   *     always passes and falls back to the SDK default)
    * Validates, writes to DB, reloads in-memory state, and returns the
    * updated view.
    */
   patchModel(jid: string, model: string | null): PatchResult {
     const group = this.lookupGroup(jid);
     if (!group) return { ok: false, error: 'not_found' };
-    if ((group.sdk ?? 'codex') !== 'claude') {
-      return { ok: false, error: 'not_claude' };
-    }
-    if (model !== null && !isValidClaudeModel(model)) {
+    const sdk = (group.sdk ?? 'codex') as SdkKind;
+    if (model !== null && !isValidModelForSdk(sdk, model)) {
       return { ok: false, error: 'invalid_model' };
     }
     const changed = this.deps.updateGroupModel(jid, model);

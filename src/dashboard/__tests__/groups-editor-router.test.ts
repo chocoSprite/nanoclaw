@@ -19,12 +19,16 @@ import type {
 import type { RegisteredGroup } from '../../types.js';
 import type { ResetResult } from '../../session-reset.js';
 
-function makeView(jid: string, model: string | null = null): GroupEditorView {
+function makeView(
+  jid: string,
+  model: string | null = null,
+  sdk: 'claude' | 'codex' = 'claude',
+): GroupEditorView {
   return {
     jid,
     name: jid,
     folder: jid.replace(':', '_'),
-    sdk: 'claude',
+    sdk,
     model,
     isMain: false,
     botRole: 'solo',
@@ -172,24 +176,30 @@ describe('PATCH /api/groups/:jid', () => {
     expect(fx.patchModel).toHaveBeenCalledWith('slack:A', null);
   });
 
-  it('maps not_claude → 400', async () => {
+  it('forwards codex model patch to the service', async () => {
     fx = await start(
-      () => ({ ok: false, error: 'not_claude' }),
+      (_jid, model) => ({
+        ok: true,
+        view: makeView('slack:A', model, 'codex'),
+      }),
       () => undefined,
       async () => ({
         groupName: '',
         folder: '',
-        sdkType: 'claude',
+        sdkType: 'codex',
         errors: [],
       }),
     );
     const res = await fetch(`${fx.base}/groups/slack:A`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-opus-4-6' }),
+      body: JSON.stringify({ model: 'gpt-5.4' }),
     });
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe('not_claude');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.group.model).toBe('gpt-5.4');
+    expect(fx.patchModel).toHaveBeenCalledWith('slack:A', 'gpt-5.4');
   });
 
   it('maps invalid_model → 400', async () => {

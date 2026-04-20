@@ -13,8 +13,11 @@ import {
   CLAUDE_MODELS,
   CLAUDE_MODEL_LABELS,
   CODEX_DEFAULT_MODEL_DISPLAY,
+  CODEX_MODELS,
+  CODEX_MODEL_LABELS,
   type BotRole,
   type GroupEditorView,
+  type SdkKind,
   type SessionResetResult,
 } from '../contracts';
 import { Card, CardContent, CardHeader } from '../components/ui/card';
@@ -161,34 +164,14 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
               <span className="text-xs text-muted-foreground">
                 {group.sdk === 'claude'
                   ? 'Claude SDK 모델 선택'
-                  : 'Codex 전역 기본값 (편집 불가)'}
+                  : 'Codex SDK 모델 선택'}
               </span>
-              {group.sdk === 'claude' ? (
-                <select
-                  value={group.model ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    modelMutation.mutate(v === '' ? null : v);
-                  }}
-                  disabled={modelMutation.isPending}
-                  className={cn(
-                    'rounded-md border border-border bg-background px-2 py-1 text-xs',
-                    'min-w-[12rem]',
-                    modelMutation.isPending && 'opacity-60',
-                  )}
-                >
-                  <option value="">(SDK 기본값)</option>
-                  {CLAUDE_MODELS.map((m) => (
-                    <option key={m} value={m}>
-                      {CLAUDE_MODEL_LABELS[m]}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <code className="font-mono text-xs">
-                  {CODEX_DEFAULT_MODEL_DISPLAY}
-                </code>
-              )}
+              <ModelSelect
+                sdk={group.sdk}
+                value={group.model}
+                disabled={modelMutation.isPending}
+                onChange={(next) => modelMutation.mutate(next)}
+              />
             </div>
             {modelMutation.isError && (
               <div className="mt-1 text-[11px] text-destructive">
@@ -328,6 +311,53 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
         }}
       />
     </>
+  );
+}
+
+function ModelSelect({
+  sdk,
+  value,
+  disabled,
+  onChange,
+}: {
+  sdk: SdkKind;
+  value: string | null;
+  disabled: boolean;
+  onChange: (next: string | null) => void;
+}) {
+  const { options, labels, defaultHint } =
+    sdk === 'claude'
+      ? {
+          options: CLAUDE_MODELS as readonly string[],
+          labels: CLAUDE_MODEL_LABELS as Record<string, string>,
+          defaultHint: 'SDK 기본값',
+        }
+      : {
+          options: CODEX_MODELS as readonly string[],
+          labels: CODEX_MODEL_LABELS as Record<string, string>,
+          defaultHint: `기본값: ${CODEX_DEFAULT_MODEL_DISPLAY}`,
+        };
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => {
+        const v = e.target.value;
+        onChange(v === '' ? null : v);
+      }}
+      disabled={disabled}
+      className={cn(
+        'rounded-md border border-border bg-background px-2 py-1 text-xs',
+        'min-w-[12rem]',
+        disabled && 'opacity-60',
+      )}
+    >
+      <option value="">({defaultHint})</option>
+      {options.map((m) => (
+        <option key={m} value={m}>
+          {labels[m]}
+        </option>
+      ))}
+    </select>
   );
 }
 

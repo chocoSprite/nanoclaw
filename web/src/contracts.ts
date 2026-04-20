@@ -243,9 +243,23 @@ export const CLAUDE_MODEL_LABELS: Record<ClaudeModelId, string> = {
 };
 
 /**
- * Display-only label for Codex groups. The dashboard does not switch
- * Codex models; the value reflects what `~/.codex/config.toml` carries
- * as the global default at the time of writing. Update this constant
- * (and the relevant memory) when Codex CLI upgrades its default model.
+ * Display-only label for Codex groups' "fall back to Codex CLI default"
+ * option. Reflects what `~/.codex/config.toml` carries as the global
+ * default at the time of writing. Update this constant (and the relevant
+ * memory) when Codex CLI upgrades its default model.
  */
 export const CODEX_DEFAULT_MODEL_DISPLAY = 'gpt-5.4';
+
+/**
+ * Codex model IDs the dashboard editor will send. Keep in sync with
+ * `src/dashboard/config.ts::CODEX_MODEL_WHITELIST`.
+ */
+export const CODEX_MODELS = ['gpt-5.4', 'gpt-5', 'o3'] as const;
+
+export type CodexModelId = (typeof CODEX_MODELS)[number];
+
+export const CODEX_MODEL_LABELS: Record<CodexModelId, string> = {
+  'gpt-5.4': 'GPT-5.4',
+  'gpt-5': 'GPT-5',
+  o3: 'o3',
+};

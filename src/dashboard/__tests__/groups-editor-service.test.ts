@@ -177,15 +177,35 @@ describe('GroupsEditorService.patchModel', () => {
     expect(r).toEqual({ ok: false, error: 'not_found' });
   });
 
-  it('rejects codex group with not_claude', () => {
+  it('accepts codex group with whitelisted codex model', () => {
+    const { svc, state } = makeSvc([
+      { jid: 'slack:A', group: group('alpha', { sdk: 'codex' }) },
+    ]);
+    const svcWithWrite = new GroupsEditorService({
+      state,
+      skills: new FakeSkillScanner({}) as unknown as SkillScanner,
+      getSessions: () => ({}),
+      groupsDir: '/g',
+      updateGroupModel: (jid, model) => state.setGroupModel(jid, model),
+      reloadGroupState: () => {},
+    });
+    const r = svcWithWrite.patchModel('slack:A', 'gpt-5.4');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.view.model).toBe('gpt-5.4');
+    expect(svc.listForEditor()[0].model).toBe('gpt-5.4');
+  });
+
+  it('rejects codex group with non-whitelisted model', () => {
     const { svc } = makeSvc([
       { jid: 'slack:A', group: group('alpha', { sdk: 'codex' }) },
     ]);
-    const r = svc.patchModel('slack:A', 'claude-opus-4-6');
-    expect(r).toEqual({ ok: false, error: 'not_claude' });
+    const r = svc.patchModel('slack:A', 'gpt-4o');
+    expect(r).toEqual({ ok: false, error: 'invalid_model' });
   });
 
-  it('rejects non-whitelisted model with invalid_model', () => {
+  it('rejects cross-sdk model (claude group, codex-whitelisted id)', () => {
+    // 'gpt-5' is in the Codex whitelist, but the group is sdk=claude, so
+    // `isValidClaudeModel('gpt-5')` is false → invalid_model (not a bypass).
     const { svc } = makeSvc([{ jid: 'slack:A', group: group('alpha') }]);
     const r = svc.patchModel('slack:A', 'gpt-5');
     expect(r).toEqual({ ok: false, error: 'invalid_model' });
