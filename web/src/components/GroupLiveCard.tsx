@@ -34,15 +34,42 @@ export function GroupLiveCard({ group }: Props) {
   const pendingStuck = pendingSec !== null && pendingSec > 60;
   const SdkIcon = group.sdk === 'claude' ? Sparkles : Bot;
 
+  // Idle cards carry almost no live info (no currentTool, no tools, no gauge),
+  // so at full height (h-52) they became huge blank rectangles — 12 idle
+  // cards on mobile drowned the 1 running card. Collapse to a compact single
+  // row; running/error keep the detailed h-52 layout.
+  if (idle) {
+    return (
+      <Card className="h-14 overflow-hidden opacity-70 transition-opacity">
+        <div className="flex h-full items-center gap-2 px-4 sm:px-5">
+          <span
+            className={cn(
+              'inline-block size-2 shrink-0 rounded-full',
+              STATUS_DOT[group.containerStatus],
+            )}
+            aria-label={STATUS_LABEL[group.containerStatus]}
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+            {group.name}
+          </span>
+          <Badge variant={group.sdk === 'claude' ? 'info' : 'warning'}>
+            <SdkIcon className="size-3" />
+            {group.sdk}
+          </Badge>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card
       className={cn(
-        // Fixed height + overflow-hidden so idle/running/error cards all share
-        // the same footprint in the grid — prevents the sawtooth layout where
-        // cards with long recentTools pushed rows unevenly tall. Content that
-        // overflows (e.g. 5 tools + gauge) is clipped; drawer reveals full.
+        // Fixed height + overflow-hidden so running/error cards share the
+        // same footprint in the grid — prevents the sawtooth layout where
+        // cards with long recentTools pushed rows unevenly tall. Content
+        // that overflows (e.g. 5 tools + gauge) is clipped; drawer reveals
+        // full.
         'h-52 overflow-hidden transition-opacity',
-        idle && 'opacity-60',
       )}
     >
       <CardHeader className="gap-2 pb-3">
