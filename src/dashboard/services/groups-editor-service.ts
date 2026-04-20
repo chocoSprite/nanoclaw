@@ -9,7 +9,11 @@
 
 import path from 'node:path';
 
-import type { RegisteredGroup } from '../../types.js';
+import type {
+  AdditionalMount,
+  MatConfig,
+  RegisteredGroup,
+} from '../../types.js';
 import type { StateReader } from '../adapters/state-adapter.js';
 import type { SkillScanner, SkillEntry } from './skill-scanner.js';
 import type { SdkKind } from '../events.js';
@@ -33,6 +37,16 @@ export interface GroupEditorView {
   claudeMdPath: string;
   skills: SkillEntry[];
   session: GroupSessionInfo;
+  /** User-configured extra host-path mounts. Empty when none declared. */
+  additionalMounts: AdditionalMount[];
+  /** pat→mat pairing config (multi-agent channels). Undefined for solo/main groups. */
+  matConfig?: MatConfig;
+  /** When the group was registered (ISO timestamp). */
+  addedAt: string;
+  /** Whether incoming messages need to match the trigger pattern. */
+  requiresTrigger: boolean;
+  /** Container turn timeout in ms. Undefined → runtime default (5 minutes). */
+  containerTimeout?: number;
 }
 
 export type PatchError = 'not_found' | 'invalid_model';
@@ -99,6 +113,11 @@ export class GroupsEditorService {
         session: {
           sessionId: sessions[group.folder] ?? null,
         },
+        additionalMounts: group.containerConfig?.additionalMounts ?? [],
+        matConfig: group.matConfig,
+        addedAt: group.added_at,
+        requiresTrigger: group.requiresTrigger ?? true,
+        containerTimeout: group.containerConfig?.timeout,
       };
     });
   }

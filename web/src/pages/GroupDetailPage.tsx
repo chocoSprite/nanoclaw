@@ -9,6 +9,7 @@ import {
   CODEX_DEFAULT_MODEL_DISPLAY,
   CODEX_MODELS,
   CODEX_MODEL_LABELS,
+  type AdditionalMount,
   type BotRole,
   type GroupEditorView,
   type SdkKind,
@@ -181,6 +182,49 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
             </KV>
           </Section>
 
+          {/* Mounts */}
+          <Section
+            title={`마운트 · ${group.additionalMounts.length}개`}
+            hint="컨테이너에 꼽힌 호스트 디렉토리"
+          >
+            {group.additionalMounts.length === 0 ? (
+              <span className="text-[11px] italic text-muted-foreground">
+                없음
+              </span>
+            ) : (
+              group.additionalMounts.map((m, i) => (
+                <MountRow key={`${m.hostPath}:${i}`} mount={m} />
+              ))
+            )}
+          </Section>
+
+          {/* Pairing (mat) — only when configured */}
+          {group.matConfig && (
+            <Section title="페어링" hint="pat → mat 자동 사이클">
+              <KV label="상태">
+                <Badge
+                  variant={group.matConfig.enabled ? 'success' : 'muted'}
+                  className="text-[10px]"
+                >
+                  {group.matConfig.enabled ? 'enabled' : 'disabled'}
+                </Badge>
+              </KV>
+              <KV label="mat 폴더">
+                <code className="break-all font-mono text-[11px]">
+                  {group.matConfig.matFolder}
+                </code>
+              </KV>
+              <KV label="mat JID">
+                <code className="break-all font-mono text-[11px]">
+                  {group.matConfig.matJid}
+                </code>
+              </KV>
+              <KV label="최대 라운드">
+                <span className="text-xs">{group.matConfig.maxRounds}</span>
+              </KV>
+            </Section>
+          )}
+
           {/* Skills */}
           <Section
             title={`스킬 · ${group.skills.length}개`}
@@ -208,6 +252,28 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
                 ))
               )}
             </div>
+          </Section>
+
+          {/* Meta */}
+          <Section title="메타">
+            <KV label="등록">
+              <span className="text-xs">{formatAddedAt(group.addedAt)}</span>
+            </KV>
+            <KV label="트리거 필요">
+              <Badge
+                variant={group.requiresTrigger ? 'info' : 'muted'}
+                className="text-[10px]"
+              >
+                {group.requiresTrigger ? '예' : '아니오 (자동 수신)'}
+              </Badge>
+            </KV>
+            <KV label="타임아웃">
+              <span className="text-xs">
+                {group.containerTimeout
+                  ? `${Math.round(group.containerTimeout / 60000)}분`
+                  : '기본값 (5분)'}
+              </span>
+            </KV>
           </Section>
 
           {/* Session */}
@@ -379,6 +445,36 @@ function KV({ label, children }: { label: string; children: React.ReactNode }) {
       <div className="min-w-0">{children}</div>
     </div>
   );
+}
+
+function MountRow({ mount }: { mount: AdditionalMount }) {
+  const ro = mount.readonly ?? true;
+  const label =
+    mount.containerPath ??
+    mount.hostPath.split('/').filter(Boolean).pop() ??
+    mount.hostPath;
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-start gap-2">
+      <div className="min-w-0">
+        <div className="text-[11px] text-muted-foreground">{label}</div>
+        <code className="break-all font-mono text-[11px]">
+          {mount.hostPath}
+        </code>
+      </div>
+      <Badge variant={ro ? 'muted' : 'warning'} className="text-[10px]">
+        {ro ? 'ro' : 'rw'}
+      </Badge>
+    </div>
+  );
+}
+
+function formatAddedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function NotFoundCard({

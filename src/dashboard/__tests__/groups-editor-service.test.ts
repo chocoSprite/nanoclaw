@@ -110,6 +110,13 @@ describe('GroupsEditorService', () => {
     );
     expect(view.skills).toEqual([{ name: 'status', origin: 'global' }]);
     expect(view.session.sessionId).toBe('sess-123');
+    // Scope B fields — default shape when containerConfig / matConfig /
+    // requiresTrigger are absent on the underlying RegisteredGroup.
+    expect(view.additionalMounts).toEqual([]);
+    expect(view.matConfig).toBeUndefined();
+    expect(view.addedAt).toBe('2026-04-19');
+    expect(view.requiresTrigger).toBe(true);
+    expect(view.containerTimeout).toBeUndefined();
   });
 
   it('defaults sdk to codex and model to null when absent', () => {
@@ -128,6 +135,53 @@ describe('GroupsEditorService', () => {
     expect(view.sdk).toBe('codex');
     expect(view.model).toBeNull();
     expect(view.session.sessionId).toBeNull();
+  });
+
+  it('forwards additionalMounts, matConfig, requiresTrigger, and timeout', () => {
+    const { svc } = makeSvc([
+      {
+        jid: 'slack:P',
+        group: group('gamma_pat', {
+          requiresTrigger: false,
+          containerConfig: {
+            timeout: 600_000,
+            additionalMounts: [
+              { hostPath: '/Users/me/vault', readonly: true },
+              {
+                hostPath: '/Users/me/work',
+                containerPath: 'work',
+                readonly: false,
+              },
+            ],
+          },
+          matConfig: {
+            enabled: true,
+            matJid: 'slack-mat:M1',
+            matFolder: 'gamma_mat',
+            maxRounds: 3,
+          },
+        }),
+      },
+    ]);
+    const [view] = svc.listForEditor();
+    expect(view.additionalMounts).toHaveLength(2);
+    expect(view.additionalMounts[0]).toMatchObject({
+      hostPath: '/Users/me/vault',
+      readonly: true,
+    });
+    expect(view.additionalMounts[1]).toMatchObject({
+      hostPath: '/Users/me/work',
+      containerPath: 'work',
+      readonly: false,
+    });
+    expect(view.matConfig).toEqual({
+      enabled: true,
+      matJid: 'slack-mat:M1',
+      matFolder: 'gamma_mat',
+      maxRounds: 3,
+    });
+    expect(view.requiresTrigger).toBe(false);
+    expect(view.containerTimeout).toBe(600_000);
   });
 
   it('getOne returns undefined for unknown jid', () => {

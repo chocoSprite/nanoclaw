@@ -228,6 +228,21 @@ export interface GroupSessionInfo {
   sessionId: string | null;
 }
 
+/** Mirror of `src/types.ts::AdditionalMount`. */
+export interface AdditionalMount {
+  hostPath: string;
+  containerPath?: string;
+  readonly?: boolean;
+}
+
+/** Mirror of `src/types.ts::MatConfig`. */
+export interface MatConfig {
+  enabled: boolean;
+  matJid: string;
+  matFolder: string;
+  maxRounds: number;
+}
+
 export interface GroupEditorView {
   jid: string;
   name: string;
@@ -240,6 +255,11 @@ export interface GroupEditorView {
   claudeMdPath: string;
   skills: SkillEntry[];
   session: GroupSessionInfo;
+  additionalMounts: AdditionalMount[];
+  matConfig?: MatConfig;
+  addedAt: string;
+  requiresTrigger: boolean;
+  containerTimeout?: number;
 }
 
 export interface SessionResetResult {
