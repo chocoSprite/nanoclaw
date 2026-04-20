@@ -2,6 +2,7 @@ import type {
   LiveGroupState,
   LogEntry,
   LogLevel,
+  LogSignal,
   ScheduledTaskDto,
   TaskRunLogDto,
 } from '../contracts';
@@ -129,4 +130,33 @@ export function fetchLogs(q: LogsFilterQuery = {}): Promise<LogEntry[]> {
   const qs = params.toString();
   const path = qs ? `/api/logs/recent?${qs}` : '/api/logs/recent';
   return getJson<LogsResponse>(path).then((r) => r.entries);
+}
+
+// --- Log signals ---
+
+interface SignalsResponse {
+  v: 1;
+  signals: LogSignal[];
+}
+
+interface SignalDismissResponse {
+  v: 1;
+  ok: boolean;
+  signal?: LogSignal;
+  error?: string;
+}
+
+export function fetchSignals(
+  status: 'active' | 'resolved' | 'all' = 'active',
+): Promise<LogSignal[]> {
+  return getJson<SignalsResponse>(`/api/logs/signals?status=${status}`).then(
+    (r) => r.signals,
+  );
+}
+
+export function dismissSignal(id: number): Promise<LogSignal | undefined> {
+  return mutate<SignalDismissResponse>(
+    `/api/logs/signals/${id}/dismiss`,
+    'POST',
+  ).then((r) => r.signal);
 }

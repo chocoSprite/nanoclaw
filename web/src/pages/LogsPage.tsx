@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ScrollText, X } from 'lucide-react';
-import { fetchLogs } from '../lib/api';
+import { dismissSignal, fetchLogs } from '../lib/api';
+import { signalsStore, useSignalById } from '../lib/signals-store';
 import { WsClient } from '../lib/ws-client';
-import type { LogEntry, LogLevel } from '../contracts';
+import type { LogEntry, LogLevel, LogSignal, LogSignalKind } from '../contracts';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -22,6 +24,13 @@ const MAX_ENTRIES = 500;
 const HYDRATE_LIMIT = 200;
 
 export function LogsPage() {
+  const [searchParams] = useSearchParams();
+  const signalIdParam = searchParams.get('signalId');
+  const signalId = signalIdParam ? Number.parseInt(signalIdParam, 10) : null;
+  const focusedSignal = useSignalById(
+    Number.isFinite(signalId) ? signalId : null,
+  );
+
   const [level, setLevel] = useState<'' | LogLevel>('');
   const [group, setGroup] = useState('');
   const [search, setSearch] = useState('');
@@ -31,7 +40,21 @@ export function LogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [selected, setSelected] = useState<LogEntry | null>(null);
+  const [signalDetail, setSignalDetail] = useState<LogSignal | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+
+  // When navigating in via ?signalId=, auto-prime the group filter once so
+  // the tail narrows to the signal's group. null groupFolder (upstream_outage)
+  // sets no filter — operator sees the global error stream.
+  useEffect(() => {
+    if (!focusedSignal) return;
+    if (focusedSignal.groupFolder) {
+      setGroup(focusedSignal.groupFolder);
+    }
+    setLevel('error');
+    // run once per signal id
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedSignal?.id]);
 
   // Debounce search input
   useEffect(() => {
@@ -95,6 +118,13 @@ export function LogsPage() {
   return (
     <div className="px-4 py-5 sm:px-6 sm:py-6">
       <div className="mx-auto flex max-w-5xl flex-col gap-4">
+        {focusedSignal && (
+          <SignalBanner
+            signal={focusedSignal}
+            onDetail={() => setSignalDetail(focusedSignal)}
+          />
+        )}
+
         <FilterBar
           level={level}
           group={group}
@@ -138,9 +168,116 @@ export function LogsPage() {
             onClose={() => setSelected(null)}
           />
         )}
+
+        {signalDetail && (
+          <SignalDetailOverlay
+            signal={signalDetail}
+            onClose={() => setSignalDetail(null)}
+          />
+        )}
       </div>
     </div>
   );
+}
+
+const SIGNAL_LABEL: Record<LogSignalKind, string> = {
+  oauth_failure: '인증 실패 (401/403)',
+  crash_loop: '크래시 루프',
+  upstream_outage: '외부 API 이상 (5xx)',
+};
+
+function SignalBanner({
+  signal,
+  onDetail,
+}: {
+  signal: LogSignal;
+  onDetail: () => void;
+}) {
+  return (
+    <Card className="border-destructive/50 bg-destructive/5">
+      <CardContent className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-destructive">
+              {SIGNAL_LABEL[signal.kind]}
+            </span>
+            <Badge variant="muted" className="px-1.5 py-0 text-[10px]">
+              ×{signal.count}
+            </Badge>
+          </div>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {signal.groupFolder ?? '전역'} · {formatRange(signal.firstSeen, signal.lastSeen)}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={onDetail}>
+            상세
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              signalsStore.dismissLocal(signal.id);
+              void dismissSignal(signal.id);
+            }}
+          >
+            무시
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignalDetailOverlay({
+  signal,
+  onClose,
+}: {
+  signal: LogSignal;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+      <button
+        type="button"
+        aria-label="닫기"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+      />
+      <div className="relative flex w-full max-w-2xl flex-col gap-2 rounded-lg border border-border bg-card p-4 shadow-xl">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold">{SIGNAL_LABEL[signal.kind]}</span>
+          <Button size="icon" variant="ghost" onClick={onClose}>
+            <X />
+          </Button>
+        </div>
+        <div className="flex flex-col gap-0.5 font-mono text-xs text-muted-foreground">
+          <span>{signal.groupFolder ?? '전역'}</span>
+          <span>
+            {formatRange(signal.firstSeen, signal.lastSeen)} · ×{signal.count}
+          </span>
+        </div>
+        <pre className="scrollbar-thin max-h-[60vh] overflow-auto rounded-md bg-background/60 p-3 font-mono text-[11px]">
+          {JSON.stringify(signal.details, null, 2)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function formatRange(firstIso: string, lastIso: string): string {
+  const f = new Date(Date.parse(firstIso));
+  const l = new Date(Date.parse(lastIso));
+  const fStr = f.toLocaleString('ko-KR');
+  const lStr = l.toLocaleString('ko-KR');
+  return fStr === lStr ? fStr : `${fStr} ~ ${lStr}`;
 }
 
 function passesFilter(

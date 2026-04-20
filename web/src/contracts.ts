@@ -132,8 +132,31 @@ export interface LogEntry {
   raw: Record<string, unknown>;
 }
 
+// --- Log signals (derived signals on the bell dropdown + LogsPage banner) ---
+
+export type LogSignalKind =
+  | 'oauth_failure'
+  | 'crash_loop'
+  | 'upstream_outage';
+
+export type SignalChangeStatus = 'active' | 'resolved';
+
+export interface LogSignal {
+  id: number;
+  kind: LogSignalKind;
+  groupFolder: string | null;
+  severity: 'warn' | 'error';
+  firstSeen: string;
+  lastSeen: string;
+  count: number;
+  details: Record<string, unknown>;
+  resolvedAt: string | null;
+  dismissedAt: string | null;
+}
+
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }
   | { type: 'event'; event: AgentEventV1 }
   | { type: 'roster'; groups: RegisteredGroupLite[] }
-  | { type: 'log'; entry: LogEntry };
+  | { type: 'log'; entry: LogEntry }
+  | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal };

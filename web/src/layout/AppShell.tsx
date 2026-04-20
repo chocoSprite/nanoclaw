@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Sheet } from '../components/ui/sheet';
+import { signalsStore } from '../lib/signals-store';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
@@ -10,6 +11,13 @@ import { TopBar } from './TopBar';
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // signals drive the global bell — start once at mount so the dropdown stays
+  // fresh across route changes. LivePage still owns the live-store lifecycle.
+  useEffect(() => {
+    signalsStore.start();
+    return () => signalsStore.stop();
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
