@@ -137,9 +137,10 @@ export class GroupsEditorService {
  *   - folder ends with '_pat' → 'pat' (pat-lane bot)
  *   - otherwise → 'solo' (legacy groups predating the suffix convention)
  *
- * Structural signals (matConfig / JID prefix) were tempting but matConfig
- * is not surfaced by the DB read functions (pre-existing bug), and the
- * user-facing convention is the folder suffix.
+ * Structural signals (matConfig / JID prefix) were tempting, but the
+ * user-facing convention is the folder suffix — it's explicit, stable
+ * across DB/memory pairing changes, and already codified in
+ * `feedback_group_naming_convention.md`.
  */
 export function deriveBotRole(folder: string, isMain: boolean): BotRole {
   if (isMain) return 'main';

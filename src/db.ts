@@ -558,6 +558,7 @@ export function getRegisteredGroup(
         container_config: string | null;
         requires_trigger: number | null;
         is_main: number | null;
+        mat_config: string | null;
         sdk: string | null;
         model: string | null;
       }
@@ -582,6 +583,7 @@ export function getRegisteredGroup(
     requiresTrigger:
       row.requires_trigger === null ? undefined : row.requires_trigger === 1,
     isMain: row.is_main === 1 ? true : undefined,
+    matConfig: row.mat_config ? JSON.parse(row.mat_config) : undefined,
     sdk: (row.sdk as 'codex' | 'claude') ?? 'codex',
     model: row.model ?? undefined,
   };
@@ -612,10 +614,10 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
 /**
  * Targeted UPDATE of the `model` column for a single registered group.
  *
- * Used by the dashboard editor to switch Claude models without touching
- * the rest of the row. Prefer this over `setRegisteredGroup` for partial
- * edits — the upsert form loses columns that `getRegisteredGroup` does
- * not surface (e.g. `mat_config`).
+ * Used by the dashboard editor to switch models without touching the
+ * rest of the row. Prefer this over `setRegisteredGroup` for partial
+ * edits — the upsert form round-trips the entire row, which risks
+ * clobbering columns if the caller's read path ever drops any.
  *
  * Returns true when a row was updated, false when the JID was not found.
  */
