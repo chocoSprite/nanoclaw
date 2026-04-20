@@ -17,6 +17,7 @@ import type {
   LogLevel,
   LogsService,
 } from './services/logs-service.js';
+import type { TranscriptionService } from './services/transcription-service.js';
 
 export interface RouterDeps {
   groups: GroupsService;
@@ -24,6 +25,7 @@ export interface RouterDeps {
   automation: AutomationService;
   logs: LogsService;
   signals: LogSignalsService;
+  transcription: TranscriptionService;
   /**
    * Reset a group's session. Wrapped around host `resetGroupSession` so
    * the router does not need to know about terminateGroup/dataDir/etc.
@@ -227,6 +229,21 @@ export function createRouter(deps: RouterDeps): Router {
       'GET /api/logs/signals',
     );
     res.json({ v: 1, signals: signals ?? [] });
+  });
+
+  // --- Transcription (WhisperX host subprocess observability) ---
+
+  r.get('/transcription/active', (_req, res) => {
+    const snapshot = runInIsolation(
+      () => deps.transcription.getSnapshot(),
+      'GET /api/transcription/active',
+    );
+    res.json({
+      v: 1,
+      active: snapshot?.active ?? [],
+      queued: snapshot?.queued ?? [],
+      recentTerminal: snapshot?.recentTerminal ?? [],
+    });
   });
 
   r.post('/logs/signals/:id/dismiss', (req, res) => {

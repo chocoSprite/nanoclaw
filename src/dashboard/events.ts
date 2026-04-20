@@ -90,6 +90,10 @@ import type {
   GroupSessionInfo,
 } from './services/groups-editor-service.js';
 import type { SkillEntry, SkillOrigin } from './services/skill-scanner.js';
+import type {
+  TranscriptionEntry,
+  TranscriptionSnapshot,
+} from './services/transcription-service.js';
 
 export type { LogSignal, SignalChangeStatus };
 export type {
@@ -98,6 +102,8 @@ export type {
   GroupSessionInfo,
   SkillEntry,
   SkillOrigin,
+  TranscriptionEntry,
+  TranscriptionSnapshot,
 };
 
 export type WsMessage =
@@ -105,4 +111,5 @@ export type WsMessage =
   | { type: 'event'; event: AgentEventV1 }
   | { type: 'roster'; groups: RegisteredGroupLite[] }
   | { type: 'log'; entry: LogEntry }
-  | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal };
+  | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal }
+  | { type: 'transcription'; snapshot: TranscriptionSnapshot };

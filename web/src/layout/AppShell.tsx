@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Sheet } from '../components/ui/sheet';
 import { signalsStore } from '../lib/signals-store';
+import { transcriptionStore } from '../lib/transcription-store';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
@@ -17,6 +18,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     signalsStore.start();
     return () => signalsStore.stop();
+  }, []);
+
+  // Transcription banner is also route-agnostic (active WhisperX subprocess
+  // doesn't belong to any group). Start at mount so the Live page shows a
+  // fresh snapshot immediately on first render.
+  useEffect(() => {
+    transcriptionStore.start();
+    return () => transcriptionStore.stop();
   }, []);
 
   return (

@@ -5,6 +5,7 @@ import { fetchLiveGroups } from '../lib/api';
 import { liveStore, useLiveGroups } from '../lib/live-store';
 import { GroupLiveCard } from '../components/GroupLiveCard';
 import { SessionDetailDrawer } from '../components/SessionDetailDrawer';
+import { TranscriptionBanner } from '../components/TranscriptionBanner';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -51,6 +52,8 @@ export function LivePage() {
             ? `${total}개 그룹 · ${running}개 동작중 · 이벤트는 WebSocket 으로 실시간 반영`
             : '등록된 그룹 없음'}
         </p>
+
+        <TranscriptionBanner />
 
         {query.isLoading && groups.length === 0 ? (
           <LoadingSkeleton />

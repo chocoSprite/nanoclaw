@@ -21,6 +21,7 @@ import path from 'path';
 import { DATA_DIR } from './config.js';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
+import { transcriptionEvents } from './transcription-events.js';
 
 const PYTHON_BIN = path.join(DATA_DIR, 'whisperx-venv', 'bin', 'python3');
 const SCRIPT_PATH = path.resolve(
@@ -221,14 +222,31 @@ export function stripHeadLoops(txtPath: string): number {
 let transcribing = false;
 const waitQueue: Array<() => void> = [];
 
-function acquireLock(): Promise<void> {
+function acquireLock(audioPath: string, sizeBytes: number): Promise<void> {
   if (!transcribing) {
     transcribing = true;
     return Promise.resolve();
   }
+  // Somebody else is already running whisper. Log the wait so the
+  // dashboard/LogsPage can show "queued behind N in-flight" instead of
+  // a silent delay before `Starting audio transcription`.
+  const queuePosition = waitQueue.length + 1;
+  logger.info(
+    { audioPath, queueLen: queuePosition },
+    'Transcription waiting for lock',
+  );
+  transcriptionEvents.emit({
+    kind: 'transcription.queued',
+    id: audioPath,
+    audioPath,
+    sizeBytes,
+    queuePosition,
+    ts: new Date().toISOString(),
+  });
   return new Promise((resolve) => {
     waitQueue.push(() => {
       transcribing = true;
+      logger.info({ audioPath }, 'Transcription lock acquired');
       resolve();
     });
   });
@@ -272,7 +290,9 @@ export async function transcribeAudio(
     return outputPath;
   }
 
-  await acquireLock();
+  await acquireLock(audioPath, stat.size);
+
+  const startedAtMs = Date.now();
 
   try {
     // Double-check cache after acquiring lock
@@ -284,7 +304,17 @@ export async function transcribeAudio(
       return outputPath;
     }
 
-    logger.info({ audioPath }, 'Starting audio transcription (WhisperX)');
+    logger.info(
+      { audioPath, sizeMB: Number((stat.size / 1_048_576).toFixed(1)) },
+      'Starting audio transcription (WhisperX)',
+    );
+    transcriptionEvents.emit({
+      kind: 'transcription.started',
+      id: audioPath,
+      audioPath,
+      sizeBytes: stat.size,
+      ts: new Date().toISOString(),
+    });
 
     const hfToken = loadHfToken();
     if (!hfToken) {
@@ -329,9 +359,10 @@ export async function transcribeAudio(
         stderr += s;
         stderrBuf += s;
 
-        if (!onProgress) return;
-
-        // Parse line-buffered PROGRESS updates
+        // Parse line-buffered PROGRESS updates. These drive both the
+        // per-message Slack typing indicator (onProgress callback) and
+        // the LogsPage observability trail — without a trail, a 30-min
+        // whisper run looks identical to a stuck process.
         let nlIdx: number;
         while ((nlIdx = stderrBuf.indexOf('\n')) !== -1) {
           const line = stderrBuf.slice(0, nlIdx);
@@ -346,13 +377,27 @@ export async function transcribeAudio(
 
           const stage = match[1];
           const t = match[2];
-          const currentTime = t ? `${stage} ${t}` : stage;
-          onProgress({ percent: -1, currentTime });
+          logger.info(
+            { audioPath, stage, t: t ?? null },
+            'Transcription progress',
+          );
+          transcriptionEvents.emit({
+            kind: 'transcription.progress',
+            id: audioPath,
+            stage,
+            ...(t ? { t } : {}),
+            ts: new Date().toISOString(),
+          });
+          if (onProgress) {
+            const currentTime = t ? `${stage} ${t}` : stage;
+            onProgress({ percent: -1, currentTime });
+          }
         }
       });
 
       proc.on('close', (code) => {
         clearTimeout(timeout);
+        const durationMs = Date.now() - startedAtMs;
 
         if (code === 0 && fs.existsSync(outputPath)) {
           const headRemoved = stripHeadLoops(outputPath);
@@ -370,19 +415,43 @@ export async function transcribeAudio(
             );
           }
           logger.info({ audioPath, outputPath }, 'Transcription completed');
+          transcriptionEvents.emit({
+            kind: 'transcription.completed',
+            id: audioPath,
+            outputPath,
+            durationMs,
+            ts: new Date().toISOString(),
+          });
           resolve(outputPath);
         } else {
           logger.warn(
             { audioPath, code, stderr: stderr.slice(-1000) },
             'Transcription failed',
           );
+          transcriptionEvents.emit({
+            kind: 'transcription.failed',
+            id: audioPath,
+            code,
+            error: stderr.slice(-500) || undefined,
+            durationMs,
+            ts: new Date().toISOString(),
+          });
           resolve(null);
         }
       });
 
       proc.on('error', (err) => {
         clearTimeout(timeout);
+        const durationMs = Date.now() - startedAtMs;
         logger.warn({ audioPath, err }, 'Transcription process error');
+        transcriptionEvents.emit({
+          kind: 'transcription.failed',
+          id: audioPath,
+          code: null,
+          error: err instanceof Error ? err.message : String(err),
+          durationMs,
+          ts: new Date().toISOString(),
+        });
         resolve(null);
       });
     });

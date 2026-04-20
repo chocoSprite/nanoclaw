@@ -182,12 +182,40 @@ export interface LogSignal {
   dismissedAt: string | null;
 }
 
+// --- Transcription (host WhisperX subprocess observability) ---
+
+export type TranscriptionStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+export interface TranscriptionEntry {
+  id: string;
+  audioPath: string;
+  fileName: string;
+  sizeBytes: number;
+  status: TranscriptionStatus;
+  queuePosition?: number;
+  stage?: string;
+  stageT?: string;
+  queuedAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
+  error?: string;
+  outputPath?: string;
+}
+
+export interface TranscriptionSnapshot {
+  active: TranscriptionEntry[];
+  queued: TranscriptionEntry[];
+  recentTerminal: TranscriptionEntry[];
+}
+
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }
   | { type: 'event'; event: AgentEventV1 }
   | { type: 'roster'; groups: RegisteredGroupLite[] }
   | { type: 'log'; entry: LogEntry }
-  | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal };
+  | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal }
+  | { type: 'transcription'; snapshot: TranscriptionSnapshot };
 
 // --- Groups editor (REST DTOs) ---
 

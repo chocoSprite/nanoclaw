@@ -7,6 +7,7 @@ import type {
   ScheduledTaskDto,
   SessionResetResult,
   TaskRunLogDto,
+  TranscriptionSnapshot,
 } from '../contracts';
 
 /**
@@ -214,6 +215,25 @@ export async function patchGroup(
     throw new Error(`PATCH /api/groups/${jid} returned ok=false`);
   }
   return data.group;
+}
+
+// --- Transcription ---
+
+interface TranscriptionSnapshotResponse {
+  v: 1;
+  active: TranscriptionSnapshot['active'];
+  queued: TranscriptionSnapshot['queued'];
+  recentTerminal: TranscriptionSnapshot['recentTerminal'];
+}
+
+export function fetchTranscriptionSnapshot(): Promise<TranscriptionSnapshot> {
+  return getJson<TranscriptionSnapshotResponse>('/api/transcription/active').then(
+    (r) => ({
+      active: r.active,
+      queued: r.queued,
+      recentTerminal: r.recentTerminal,
+    }),
+  );
 }
 
 export async function resetGroupSession(

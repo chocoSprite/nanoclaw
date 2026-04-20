@@ -19,6 +19,7 @@ import { GroupsService } from './services/groups-service.js';
 import { LogSignalsService } from './services/log-signals-service.js';
 import { LogsService } from './services/logs-service.js';
 import { SkillScanner } from './services/skill-scanner.js';
+import { TranscriptionService } from './services/transcription-service.js';
 import { EventThrottle } from './throttle.js';
 import { WsHub } from './ws-hub.js';
 
@@ -105,12 +106,19 @@ export async function startDashboard(
       },
     });
 
+    const transcriptionService = new TranscriptionService({
+      onChange: (snapshot) => {
+        hub?.broadcastFrame({ type: 'transcription', snapshot });
+      },
+    });
+
     const router = createRouter({
       groups: groupsService,
       groupsEditor: groupsEditorService,
       automation: automationService,
       logs: logsService,
       signals: logSignalsService,
+      transcription: transcriptionService,
       resetSession: (jid, group) =>
         resetGroupSession(jid, group, {
           dataDir: DATA_DIR,
@@ -123,6 +131,7 @@ export async function startDashboard(
 
     hub = new WsHub(server, groupsService);
     logSignalsService.start();
+    transcriptionService.start();
 
     const throttle = new EventThrottle((ev) => hub.broadcast(ev));
     const unsubscribe = deps.agentEvents.on('*', (ev) => throttle.push(ev));
@@ -157,6 +166,7 @@ export async function startDashboard(
         unsubscribe();
         unsubscribeLogs();
         logSignalsService.shutdown();
+        transcriptionService.stop();
         await logsService.shutdown();
         liveCache.detach();
         capturedHub.close();
