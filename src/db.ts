@@ -7,6 +7,8 @@ import { createSchema } from './db-schema.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import {
+  LogSignalKind,
+  LogSignalRow,
   NewMessage,
   RegisteredGroup,
   ScheduledTask,
@@ -373,6 +375,125 @@ export function getTaskRunHistory(
        LIMIT ?`,
     )
     .all(taskId, limit) as TaskRunLog[];
+}
+
+// --- Log signals (derived signals surfaced on the dashboard) ---
+
+export function findActiveSignal(
+  kind: LogSignalKind,
+  groupFolder: string | null,
+): LogSignalRow | undefined {
+  return db
+    .prepare(
+      `SELECT * FROM log_signals
+       WHERE kind = ? AND COALESCE(group_folder, '') = ?
+         AND resolved_at IS NULL AND dismissed_at IS NULL`,
+    )
+    .get(kind, groupFolder ?? '') as LogSignalRow | undefined;
+}
+
+export function insertSignal(params: {
+  kind: LogSignalKind;
+  group_folder: string | null;
+  severity: 'warn' | 'error';
+  first_seen: string;
+  last_seen: string;
+  details_json: string | null;
+}): LogSignalRow {
+  const { lastInsertRowid } = db
+    .prepare(
+      `INSERT INTO log_signals
+       (kind, group_folder, severity, first_seen, last_seen, count, details_json)
+       VALUES (?, ?, ?, ?, ?, 1, ?)`,
+    )
+    .run(
+      params.kind,
+      params.group_folder,
+      params.severity,
+      params.first_seen,
+      params.last_seen,
+      params.details_json,
+    );
+  return getSignalById(Number(lastInsertRowid))!;
+}
+
+export function bumpSignal(
+  id: number,
+  lastSeen: string,
+  detailsJson: string | null,
+): LogSignalRow {
+  db.prepare(
+    `UPDATE log_signals
+     SET last_seen = ?, count = count + 1, details_json = ?
+     WHERE id = ?`,
+  ).run(lastSeen, detailsJson, id);
+  return getSignalById(id)!;
+}
+
+export function getSignalById(id: number): LogSignalRow | undefined {
+  return db.prepare(`SELECT * FROM log_signals WHERE id = ?`).get(id) as
+    | LogSignalRow
+    | undefined;
+}
+
+export function listSignals(
+  status: 'active' | 'resolved' | 'all' = 'active',
+  limit: number = 100,
+): LogSignalRow[] {
+  let where = '';
+  if (status === 'active') {
+    where = `WHERE resolved_at IS NULL AND dismissed_at IS NULL`;
+  } else if (status === 'resolved') {
+    where = `WHERE resolved_at IS NOT NULL OR dismissed_at IS NOT NULL`;
+  }
+  return db
+    .prepare(
+      `SELECT * FROM log_signals ${where} ORDER BY last_seen DESC LIMIT ?`,
+    )
+    .all(limit) as LogSignalRow[];
+}
+
+export function dismissSignalRow(
+  id: number,
+  at: string,
+): LogSignalRow | undefined {
+  const res = db
+    .prepare(
+      `UPDATE log_signals SET dismissed_at = ?
+       WHERE id = ? AND dismissed_at IS NULL`,
+    )
+    .run(at, id);
+  if (res.changes === 0) return undefined;
+  return getSignalById(id);
+}
+
+/**
+ * Flip resolved_at on all active signals whose last_seen is older than
+ * `cutoff`. Returns the newly-resolved rows so callers can broadcast them.
+ */
+export function autoResolveSignals(cutoff: string, at: string): LogSignalRow[] {
+  // Collect candidates first so we can return the post-update snapshot.
+  const candidates = db
+    .prepare(
+      `SELECT id FROM log_signals
+       WHERE resolved_at IS NULL AND dismissed_at IS NULL
+         AND last_seen < ?`,
+    )
+    .all(cutoff) as { id: number }[];
+  if (candidates.length === 0) return [];
+  const stmt = db.prepare(
+    `UPDATE log_signals SET resolved_at = ? WHERE id = ?
+     AND resolved_at IS NULL AND dismissed_at IS NULL`,
+  );
+  const out: LogSignalRow[] = [];
+  for (const { id } of candidates) {
+    const res = stmt.run(at, id);
+    if (res.changes > 0) {
+      const row = getSignalById(id);
+      if (row) out.push(row);
+    }
+  }
+  return out;
 }
 
 // --- Router state accessors ---

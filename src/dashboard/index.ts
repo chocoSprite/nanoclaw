@@ -4,12 +4,13 @@ import type { GroupQueue } from '../group-queue.js';
 import { logger } from '../logger.js';
 import { LiveStateReader } from './adapters/state-adapter.js';
 import { LiveQueueReader } from './adapters/queue-adapter.js';
-import { dashboardConfig } from './config.js';
+import { dashboardConfig, signalsConfig } from './config.js';
 import { LiveStateCache } from './live-state.js';
 import { createRouter } from './router.js';
 import { createHttpServer } from './server.js';
 import { AutomationService } from './services/automation-service.js';
 import { GroupsService } from './services/groups-service.js';
+import { LogSignalsService } from './services/log-signals-service.js';
 import { LogsService } from './services/logs-service.js';
 import { EventThrottle } from './throttle.js';
 import { WsHub } from './ws-hub.js';
@@ -62,18 +63,34 @@ export async function startDashboard(
 
     const logsService = new LogsService({ logsDir: LOGS_DIR });
 
+    // Hub is assigned after the server exists. LogSignalsService closes over
+    // a mutable ref so onSignalChange can broadcast once wiring is complete.
+    let hub: WsHub | null = null;
+
+    const logSignalsService = new LogSignalsService({
+      logs: logsService,
+      events: deps.agentEvents,
+      config: signalsConfig(),
+      onSignalChange: (status, signal) => {
+        hub?.broadcastFrame({ type: 'signal', status, signal });
+      },
+    });
+
     const router = createRouter({
       groups: groupsService,
       automation: automationService,
       logs: logsService,
+      signals: logSignalsService,
     });
     const { server } = createHttpServer({ router });
 
-    const hub = new WsHub(server, groupsService);
+    hub = new WsHub(server, groupsService);
+    logSignalsService.start();
+
     const throttle = new EventThrottle((ev) => hub.broadcast(ev));
     const unsubscribe = deps.agentEvents.on('*', (ev) => throttle.push(ev));
     const unsubscribeLogs = logsService.subscribe((entry) => {
-      hub.broadcastFrame({ type: 'log', entry });
+      hub?.broadcastFrame({ type: 'log', entry });
     });
 
     server.on('error', (err) => {
@@ -96,14 +113,16 @@ export async function startDashboard(
 
     logger.info({ scope: 'dashboard', port: cfg.port }, 'Dashboard listening');
 
+    const capturedHub = hub;
     return {
       port: cfg.port,
       async stop(): Promise<void> {
         unsubscribe();
         unsubscribeLogs();
+        logSignalsService.shutdown();
         await logsService.shutdown();
         liveCache.detach();
-        hub.close();
+        capturedHub.close();
         await new Promise<void>((resolve) => server.close(() => resolve()));
       },
     };

@@ -15,3 +15,32 @@ export function dashboardConfig(): DashboardConfig {
       : DEFAULT_PORT;
   return { enabled, port };
 }
+
+/** Thresholds for log-signals detection. Env-tunable; conservative defaults. */
+export interface SignalsConfig {
+  crashLoopWindowSec: number;
+  crashLoopCount: number;
+  upstreamWindowSec: number;
+  upstreamCount: number;
+  autoResolveHours: number;
+  /** sweep tick interval in ms — auto-resolve runs this often. */
+  sweepIntervalMs: number;
+}
+
+function envInt(key: string, defaultVal: number): number {
+  const raw = process.env[key];
+  if (!raw) return defaultVal;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : defaultVal;
+}
+
+export function signalsConfig(): SignalsConfig {
+  return {
+    crashLoopWindowSec: envInt('SIGNAL_CRASH_LOOP_WINDOW_SEC', 300),
+    crashLoopCount: envInt('SIGNAL_CRASH_LOOP_COUNT', 3),
+    upstreamWindowSec: envInt('SIGNAL_UPSTREAM_WINDOW_SEC', 120),
+    upstreamCount: envInt('SIGNAL_UPSTREAM_COUNT', 5),
+    autoResolveHours: envInt('SIGNAL_AUTO_RESOLVE_HOURS', 24),
+    sweepIntervalMs: envInt('SIGNAL_SWEEP_INTERVAL_MS', 300_000),
+  };
+}

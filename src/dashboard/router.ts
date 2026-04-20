@@ -8,6 +8,7 @@ import { runInIsolation } from './isolation.js';
 import { logger } from '../logger.js';
 import type { AutomationService } from './services/automation-service.js';
 import type { GroupsService } from './services/groups-service.js';
+import type { LogSignalsService } from './services/log-signals-service.js';
 import type {
   LogFilter,
   LogLevel,
@@ -18,6 +19,7 @@ export interface RouterDeps {
   groups: GroupsService;
   automation: AutomationService;
   logs: LogsService;
+  signals: LogSignalsService;
 }
 
 const LOG_LEVELS: readonly LogLevel[] = [
@@ -145,6 +147,42 @@ export function createRouter(deps: RouterDeps): Router {
     } catch (err) {
       next(err);
     }
+  });
+
+  // --- Log Signals ---
+
+  r.get('/logs/signals', (req, res) => {
+    const rawStatus =
+      typeof req.query.status === 'string' ? req.query.status : 'active';
+    const status: 'active' | 'resolved' | 'all' =
+      rawStatus === 'resolved' || rawStatus === 'all' ? rawStatus : 'active';
+    const rawLimit = Number.parseInt(String(req.query.limit ?? '100'), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 500
+        ? rawLimit
+        : 100;
+    const signals = runInIsolation(
+      () => deps.signals.listAll(status, limit),
+      'GET /api/logs/signals',
+    );
+    res.json({ v: 1, signals: signals ?? [] });
+  });
+
+  r.post('/logs/signals/:id/dismiss', (req, res) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ v: 1, ok: false, error: 'invalid_id' });
+      return;
+    }
+    const signal = runInIsolation(
+      () => deps.signals.dismiss(id),
+      'POST /api/logs/signals/:id/dismiss',
+    );
+    if (!signal) {
+      res.status(404).json({ v: 1, ok: false, error: 'not_found' });
+      return;
+    }
+    res.json({ v: 1, ok: true, signal });
   });
 
   // Layer C: final error handler so a throwing handler cannot crash the host.

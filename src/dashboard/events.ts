@@ -47,9 +47,16 @@ export interface RegisteredGroupLite {
 
 import type { AgentEventV1 } from '../agent-events.js';
 import type { LogEntry } from './services/logs-service.js';
+import type {
+  LogSignal,
+  SignalChangeStatus,
+} from './services/log-signals-service.js';
+
+export type { LogSignal, SignalChangeStatus };
 
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }
   | { type: 'event'; event: AgentEventV1 }
   | { type: 'roster'; groups: RegisteredGroupLite[] }
-  | { type: 'log'; entry: LogEntry };
+  | { type: 'log'; entry: LogEntry }
+  | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal };

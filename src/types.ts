@@ -99,6 +99,27 @@ export interface TaskRunLog {
   error: string | null;
 }
 
+/**
+ * Row in log_signals — derived signals surfaced on the dashboard
+ * (bell dropdown + LogsPage banner). Active while resolved_at/dismissed_at
+ * are both NULL; the auto-resolve sweep flips resolved_at after 24h of
+ * quiet; user dismiss flips dismissed_at.
+ */
+export type LogSignalKind = 'oauth_failure' | 'crash_loop' | 'upstream_outage';
+
+export interface LogSignalRow {
+  id: number;
+  kind: LogSignalKind;
+  group_folder: string | null;
+  severity: 'warn' | 'error';
+  first_seen: string;
+  last_seen: string;
+  count: number;
+  details_json: string | null;
+  resolved_at: string | null;
+  dismissed_at: string | null;
+}
+
 // --- Channel abstraction ---
 
 export interface Channel {

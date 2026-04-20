@@ -83,6 +83,24 @@ export function createSchema(database: Database.Database): void {
       sdk TEXT DEFAULT 'codex',
       model TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS log_signals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      group_folder TEXT,
+      severity TEXT NOT NULL,
+      first_seen TEXT NOT NULL,
+      last_seen TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 1,
+      details_json TEXT,
+      resolved_at TEXT,
+      dismissed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_log_signals_status
+      ON log_signals(resolved_at, dismissed_at, last_seen DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_log_signals_active
+      ON log_signals(kind, COALESCE(group_folder, ''))
+      WHERE resolved_at IS NULL AND dismissed_at IS NULL;
   `);
 
   runMigrations(database);
@@ -241,6 +259,30 @@ const migrations: Migration[] = [
       );
     });
     tx();
+  },
+  // 12: log_signals table + indices (for Derived log signals dashboard).
+  //     Table body & indices live in createSchema so fresh installs get them;
+  //     this migration covers existing DBs whose schema was created before #12.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS log_signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        group_folder TEXT,
+        severity TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 1,
+        details_json TEXT,
+        resolved_at TEXT,
+        dismissed_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_log_signals_status
+        ON log_signals(resolved_at, dismissed_at, last_seen DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_log_signals_active
+        ON log_signals(kind, COALESCE(group_folder, ''))
+        WHERE resolved_at IS NULL AND dismissed_at IS NULL;
+    `);
   },
 ];
 
