@@ -115,10 +115,10 @@ export function LogsPage() {
           <EmptyState />
         ) : (
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-0 sm:p-0">
               <div
                 ref={listRef}
-                className="scrollbar-thin max-h-[70vh] overflow-auto font-mono text-[11px]"
+                className="scrollbar-thin max-h-[70vh] overflow-auto py-2 font-mono text-[11px]"
               >
                 {visible.map((e, i) => (
                   <LogRow

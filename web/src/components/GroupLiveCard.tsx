@@ -54,7 +54,7 @@ export function GroupLiveCard({ group }: Props) {
         </div>
       </CardHeader>
 
-      <CardContent className="flex items-center justify-between gap-2 pt-0">
+      <CardContent className="flex items-center justify-between gap-2 pt-0 sm:pt-0">
         <div
           className={cn(
             'min-w-0 flex-1 truncate font-mono text-sm',

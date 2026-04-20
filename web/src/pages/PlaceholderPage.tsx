@@ -50,7 +50,7 @@ export function PlaceholderPage({
               이 페이지가 담을 것
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0 sm:pt-0">
             <ul className="flex flex-col gap-2.5">
               {planned.map((item) => (
                 <li key={item} className="flex items-start gap-2.5 text-sm">

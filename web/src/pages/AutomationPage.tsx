@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronDown,
@@ -119,91 +119,91 @@ function TaskRow({
     }
   };
 
+  const scheduleHuman = formatSchedule(task.schedule_type, task.schedule_value);
+
   return (
     <>
       <Card>
-        <CardContent className="flex flex-col gap-3 p-4">
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="flex items-start gap-2 text-left"
-          >
-            <span className="mt-0.5 text-muted-foreground">
+        <CardContent className="flex flex-col gap-2.5 p-4">
+          {/* Row 1: chevron + group name + status + actions (right) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-label={expanded ? '접기' : '펼치기'}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
               {expanded ? (
                 <ChevronDown className="size-4" />
               ) : (
                 <ChevronRight className="size-4" />
               )}
+            </button>
+            <span className="truncate font-mono text-sm font-semibold">
+              {task.group_folder}
             </span>
-            <div className="min-w-0 flex-1 flex flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate font-mono text-sm font-semibold">
-                  {task.group_folder}
-                </span>
-                <StatusBadge status={task.status} />
-                <Badge variant="outline" className="text-[10px] uppercase">
-                  {task.schedule_type}
-                </Badge>
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  {task.schedule_value}
-                </span>
-              </div>
-              <div className="truncate text-xs text-muted-foreground">
-                다음: {formatNextRun(task.next_run, task.status)}
-                {task.last_run && (
-                  <> · 마지막: {formatRelative(task.last_run)}</>
-                )}
-              </div>
-              <div className="line-clamp-2 text-xs text-foreground/80">
-                {task.prompt}
-              </div>
+            <StatusBadge status={task.status} />
+            <div className="ml-auto flex items-center gap-1">
+              {task.status === 'paused' ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => runAction('resume')}
+                  disabled={busy !== null}
+                  aria-label="재개"
+                >
+                  <Play />
+                </Button>
+              ) : task.status === 'active' ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => runAction('pause')}
+                  disabled={busy !== null}
+                  aria-label="일시정지"
+                >
+                  <PauseIcon />
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setDialog('trigger')}
+                disabled={busy !== null}
+                aria-label="지금 실행"
+              >
+                <Zap />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setDialog('delete')}
+                disabled={busy !== null}
+                aria-label="삭제"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 />
+              </Button>
             </div>
-          </button>
-
-          <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border/60 pt-3">
-            {task.status === 'paused' ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => runAction('resume')}
-                disabled={busy !== null}
-              >
-                <Play />
-                Resume
-              </Button>
-            ) : task.status === 'active' ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => runAction('pause')}
-                disabled={busy !== null}
-              >
-                <PauseIcon />
-                Pause
-              </Button>
-            ) : null}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setDialog('trigger')}
-              disabled={busy !== null}
-            >
-              <Zap />
-              Trigger Now
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setDialog('delete')}
-              disabled={busy !== null}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 />
-              Delete
-            </Button>
           </div>
 
-          {expanded && <RunHistory runsQuery={runsQuery} taskId={task.id} />}
+          {/* Row 2: schedule (human) · next · last — in a grid for PC */}
+          <dl className="ml-6 grid grid-cols-1 gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
+            <KV label="일정">
+              <span className="text-foreground">{scheduleHuman}</span>
+            </KV>
+            <KV label="다음">{formatNextRun(task.next_run, task.status)}</KV>
+            <KV label="마지막">
+              {task.last_run ? formatRelative(task.last_run) : '—'}
+            </KV>
+          </dl>
+
+          {expanded && (
+            <>
+              <PromptPanel prompt={task.prompt} />
+              <RunHistory runsQuery={runsQuery} taskId={task.id} />
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -392,6 +392,119 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
       </CardContent>
     </Card>
   );
+}
+
+function KV({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col leading-tight">
+      <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="truncate text-xs text-muted-foreground">{children}</dd>
+    </div>
+  );
+}
+
+function PromptPanel({ prompt }: { prompt: string }) {
+  return (
+    <div className="ml-6 rounded-md border border-border/60 bg-muted/20 p-3">
+      <div className="pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        프롬프트
+      </div>
+      <pre className="scrollbar-thin max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-foreground/80">
+        {prompt}
+      </pre>
+    </div>
+  );
+}
+
+// --- Schedule helpers ---
+
+const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
+
+function formatSchedule(
+  type: ScheduledTaskDto['schedule_type'],
+  value: string,
+): string {
+  if (type === 'once') {
+    const t = Date.parse(value);
+    if (!Number.isNaN(t)) return `1회 · ${new Date(t).toLocaleString('ko-KR')}`;
+    return `1회 · ${value}`;
+  }
+  if (type === 'interval') {
+    const secs = Number.parseInt(value, 10);
+    if (Number.isFinite(secs) && secs > 0) {
+      if (secs < 60) return `${secs}초마다`;
+      if (secs < 3600) return `${Math.round(secs / 60)}분마다`;
+      if (secs < 86400) return `${Math.round(secs / 3600)}시간마다`;
+      return `${Math.round(secs / 86400)}일마다`;
+    }
+    return `interval · ${value}`;
+  }
+  // cron
+  return humanizeCron(value);
+}
+
+function humanizeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return expr;
+  const [m, h, dom, mon, dow] = parts;
+
+  // Every minute
+  if (m === '*' && h === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return '매분';
+  }
+  // Every N minutes (*/N * * * *)
+  const mEvery = /^\*\/(\d+)$/.exec(m);
+  if (mEvery && h === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `${mEvery[1]}분마다`;
+  }
+  // Every N hours (M */N * * *)
+  const hEvery = /^\*\/(\d+)$/.exec(h);
+  if (hEvery && /^\d+$/.test(m) && dom === '*' && mon === '*' && dow === '*') {
+    const mm = Number.parseInt(m, 10);
+    const base = `${hEvery[1]}시간마다`;
+    return mm === 0 ? base : `${base} (${mm}분)`;
+  }
+  // Daily at H:M (M H * * *)
+  if (
+    /^\d+$/.test(m) &&
+    /^\d+$/.test(h) &&
+    dom === '*' &&
+    mon === '*' &&
+    dow === '*'
+  ) {
+    return `매일 ${pad2(h)}:${pad2(m)}`;
+  }
+  // Weekly (M H * * D)
+  if (
+    /^\d+$/.test(m) &&
+    /^\d+$/.test(h) &&
+    dom === '*' &&
+    mon === '*' &&
+    /^[0-6]$/.test(dow)
+  ) {
+    const day = WEEKDAY_KO[Number.parseInt(dow, 10)];
+    return `매주 ${day}요일 ${pad2(h)}:${pad2(m)}`;
+  }
+  // Monthly (M H D * *)
+  if (
+    /^\d+$/.test(m) &&
+    /^\d+$/.test(h) &&
+    /^\d+$/.test(dom) &&
+    mon === '*' &&
+    dow === '*'
+  ) {
+    return `매월 ${Number.parseInt(dom, 10)}일 ${pad2(h)}:${pad2(m)}`;
+  }
+  // Fallback: raw
+  return expr;
+}
+
+function pad2(s: string): string {
+  const n = Number.parseInt(s, 10);
+  if (!Number.isFinite(n)) return s;
+  return String(n).padStart(2, '0');
 }
 
 // --- Date helpers ---
