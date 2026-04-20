@@ -28,7 +28,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Automation',
     description: '예약 작업 · cron',
     icon: CalendarClock,
-    disabled: true,
   },
   {
     to: '/health',
@@ -42,7 +41,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Logs',
     description: '실시간 로그',
     icon: ScrollText,
-    disabled: true,
   },
 ];
 
