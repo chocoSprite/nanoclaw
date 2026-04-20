@@ -28,8 +28,7 @@ export function TokenGauge({ usage, sdk, showBreakdown }: Props) {
   const windowSize = getWindowForModel(usage.model, sdk);
   const pct = Math.min(100, Math.round((used / windowSize) * 100));
 
-  const tier =
-    pct >= 95 ? 'critical' : pct >= 80 ? 'warning' : 'normal';
+  const tier = pct >= 95 ? 'critical' : pct >= 80 ? 'warning' : 'normal';
   const barColor =
     tier === 'critical'
       ? 'bg-destructive'

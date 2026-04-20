@@ -83,9 +83,7 @@ function DrawerBody({ group }: { group: LiveGroupState }) {
                 {group.currentTool}
               </code>
             ) : (
-              <span className="italic text-xs text-muted-foreground">
-                없음
-              </span>
+              <span className="italic text-xs text-muted-foreground">없음</span>
             )}
           </KV>
         </Section>
@@ -102,11 +100,7 @@ function DrawerBody({ group }: { group: LiveGroupState }) {
 
         {group.lastUsage ? (
           <Section title="토큰">
-            <TokenGauge
-              usage={group.lastUsage}
-              sdk={group.sdk}
-              showBreakdown
-            />
+            <TokenGauge usage={group.lastUsage} sdk={group.sdk} showBreakdown />
           </Section>
         ) : (
           <Section title="토큰">
@@ -152,13 +146,7 @@ function Section({
   );
 }
 
-function KV({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function KV({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[5rem_1fr] items-start gap-2">
       <span className="pt-0.5 text-[11px] text-muted-foreground">{label}</span>

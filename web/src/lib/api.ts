@@ -227,13 +227,13 @@ interface TranscriptionSnapshotResponse {
 }
 
 export function fetchTranscriptionSnapshot(): Promise<TranscriptionSnapshot> {
-  return getJson<TranscriptionSnapshotResponse>('/api/transcription/active').then(
-    (r) => ({
-      active: r.active,
-      queued: r.queued,
-      recentTerminal: r.recentTerminal,
-    }),
-  );
+  return getJson<TranscriptionSnapshotResponse>(
+    '/api/transcription/active',
+  ).then((r) => ({
+    active: r.active,
+    queued: r.queued,
+    recentTerminal: r.recentTerminal,
+  }));
 }
 
 export async function resetGroupSession(

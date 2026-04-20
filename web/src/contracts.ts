@@ -162,10 +162,7 @@ export interface LogEntry {
 
 // --- Log signals (derived signals on the bell dropdown + LogsPage banner) ---
 
-export type LogSignalKind =
-  | 'oauth_failure'
-  | 'crash_loop'
-  | 'upstream_outage';
+export type LogSignalKind = 'oauth_failure' | 'crash_loop' | 'upstream_outage';
 
 export type SignalChangeStatus = 'active' | 'resolved';
 

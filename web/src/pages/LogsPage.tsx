@@ -4,7 +4,12 @@ import { ScrollText, X } from 'lucide-react';
 import { dismissSignal, fetchLogs } from '../lib/api';
 import { signalsStore, useSignalById } from '../lib/signals-store';
 import { WsClient } from '../lib/ws-client';
-import type { LogEntry, LogLevel, LogSignal, LogSignalKind } from '../contracts';
+import type {
+  LogEntry,
+  LogLevel,
+  LogSignal,
+  LogSignalKind,
+} from '../contracts';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -206,7 +211,8 @@ function SignalBanner({
             </Badge>
           </div>
           <span className="font-mono text-[11px] text-muted-foreground">
-            {signal.groupFolder ?? '전역'} · {formatRange(signal.firstSeen, signal.lastSeen)}
+            {signal.groupFolder ?? '전역'} ·{' '}
+            {formatRange(signal.firstSeen, signal.lastSeen)}
           </span>
         </div>
         <div className="flex gap-2">

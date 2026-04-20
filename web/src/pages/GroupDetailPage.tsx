@@ -1,13 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  ArrowLeft,
-  Bot,
-  FileText,
-  RotateCcw,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowLeft, Bot, FileText, RotateCcw, Sparkles } from 'lucide-react';
 import { fetchGroups, patchGroup, resetGroupSession } from '../lib/api';
 import {
   CLAUDE_MODELS,
@@ -34,10 +28,7 @@ const ROLE_LABEL: Record<BotRole, string> = {
   solo: '단독',
 };
 
-const ROLE_VARIANT: Record<
-  BotRole,
-  'default' | 'pat' | 'mat' | 'muted'
-> = {
+const ROLE_VARIANT: Record<BotRole, 'default' | 'pat' | 'mat' | 'muted'> = {
   main: 'default',
   pat: 'pat',
   mat: 'mat',
@@ -103,10 +94,8 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
   );
 
   const modelMutation = useMutation({
-    mutationFn: (model: string | null) =>
-      patchGroup(group.jid, { model }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ['groups', 'editor'] }),
+    mutationFn: (model: string | null) => patchGroup(group.jid, { model }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['groups', 'editor'] }),
   });
 
   const resetMutation = useMutation({
@@ -228,9 +217,7 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
                 {group.session.sessionId ? (
                   <>
                     <span className="text-muted-foreground">활성 · </span>
-                    <code className="font-mono">
-                      {group.session.sessionId}
-                    </code>
+                    <code className="font-mono">{group.session.sessionId}</code>
                   </>
                 ) : (
                   <span className="italic text-muted-foreground">없음</span>
@@ -266,8 +253,8 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
         title={`세션 초기화: ${group.name}`}
         description={
           <span>
-            이 그룹의 컨테이너 · 세션 파일 · DB 세션 레코드를 삭제합니다.
-            메모리 · CLAUDE.md · 스킬은 보존됩니다.
+            이 그룹의 컨테이너 · 세션 파일 · DB 세션 레코드를 삭제합니다. 메모리
+            · CLAUDE.md · 스킬은 보존됩니다.
           </span>
         }
         impact={
@@ -385,13 +372,7 @@ function Section({
   );
 }
 
-function KV({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function KV({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[5rem_1fr] items-start gap-2">
       <span className="pt-0.5 text-[11px] text-muted-foreground">{label}</span>

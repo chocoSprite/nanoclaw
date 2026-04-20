@@ -35,7 +35,16 @@ export function GroupLiveCard({ group }: Props) {
   const SdkIcon = group.sdk === 'claude' ? Sparkles : Bot;
 
   return (
-    <Card className={cn('transition-opacity', idle && 'opacity-60')}>
+    <Card
+      className={cn(
+        // Fixed height + overflow-hidden so idle/running/error cards all share
+        // the same footprint in the grid — prevents the sawtooth layout where
+        // cards with long recentTools pushed rows unevenly tall. Content that
+        // overflows (e.g. 5 tools + gauge) is clipped; drawer reveals full.
+        'h-52 overflow-hidden transition-opacity',
+        idle && 'opacity-60',
+      )}
+    >
       <CardHeader className="gap-2 pb-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">

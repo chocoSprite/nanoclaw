@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Inbox } from 'lucide-react';
 import { fetchLiveGroups } from '../lib/api';
@@ -9,6 +9,19 @@ import { TranscriptionBanner } from '../components/TranscriptionBanner';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
+import { cn } from '../lib/utils';
+import type { LiveGroupState } from '../contracts';
+
+type StatusFilter = 'all' | 'running' | 'idle' | 'error';
+
+const FILTER_LABELS: Record<StatusFilter, string> = {
+  all: '전체',
+  running: '실행중',
+  idle: '대기',
+  error: '에러',
+};
+
+const FILTER_ORDER: StatusFilter[] = ['all', 'running', 'idle', 'error'];
 
 /**
  * Live — the dashboard's primary view. Answers "what is every registered
@@ -33,8 +46,16 @@ export function LivePage() {
   }, []);
 
   const groups = useLiveGroups();
-  const running = groups.filter((g) => g.containerStatus === 'running').length;
-  const total = groups.length;
+  const counts = useMemo(() => countByStatus(groups), [groups]);
+
+  const [filter, setFilter] = useState<StatusFilter>('all');
+  const filteredGroups = useMemo(
+    () =>
+      filter === 'all'
+        ? groups
+        : groups.filter((g) => g.containerStatus === filter),
+    [groups, filter],
+  );
 
   const [selectedJid, setSelectedJid] = useState<string | null>(null);
   // Re-resolve the selected group on every render so the drawer picks up
@@ -47,11 +68,13 @@ export function LivePage() {
   return (
     <div className="px-4 py-5 sm:px-6 sm:py-6">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
-        <p className="text-xs text-muted-foreground">
-          {total > 0
-            ? `${total}개 그룹 · ${running}개 동작중 · 이벤트는 WebSocket 으로 실시간 반영`
-            : '등록된 그룹 없음'}
-        </p>
+        {groups.length > 0 && (
+          <StatusFilterTabs
+            counts={counts}
+            value={filter}
+            onChange={setFilter}
+          />
+        )}
 
         <TranscriptionBanner />
 
@@ -61,9 +84,11 @@ export function LivePage() {
           <ErrorState onRetry={() => query.refetch()} />
         ) : groups.length === 0 ? (
           <EmptyState />
+        ) : filteredGroups.length === 0 ? (
+          <FilteredEmptyState filter={filter} />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {groups.map((g) => (
+            {filteredGroups.map((g) => (
               <button
                 key={g.jid}
                 type="button"
@@ -81,6 +106,78 @@ export function LivePage() {
         onClose={() => setSelectedJid(null)}
       />
     </div>
+  );
+}
+
+function countByStatus(groups: LiveGroupState[]): Record<StatusFilter, number> {
+  const counts: Record<StatusFilter, number> = {
+    all: groups.length,
+    running: 0,
+    idle: 0,
+    error: 0,
+  };
+  for (const g of groups) {
+    counts[g.containerStatus] += 1;
+  }
+  return counts;
+}
+
+function StatusFilterTabs({
+  counts,
+  value,
+  onChange,
+}: {
+  counts: Record<StatusFilter, number>;
+  value: StatusFilter;
+  onChange: (next: StatusFilter) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="컨테이너 상태 필터"
+      className="flex flex-wrap items-center gap-1.5"
+    >
+      {FILTER_ORDER.map((key) => {
+        const active = key === value;
+        return (
+          <button
+            key={key}
+            role="tab"
+            type="button"
+            aria-selected={active}
+            onClick={() => onChange(key)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+              active
+                ? 'border-foreground/20 bg-foreground/5 text-foreground'
+                : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+            )}
+          >
+            <span>{FILTER_LABELS[key]}</span>
+            <span
+              className={cn(
+                'tabular-nums',
+                active ? 'text-foreground/80' : 'text-muted-foreground/70',
+              )}
+            >
+              {counts[key]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FilteredEmptyState({ filter }: { filter: StatusFilter }) {
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-2 py-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          {FILTER_LABELS[filter]} 상태의 그룹이 없습니다
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 

@@ -21,10 +21,7 @@ const ROLE_LABEL: Record<BotRole, string> = {
   solo: '단독',
 };
 
-const ROLE_VARIANT: Record<
-  BotRole,
-  'default' | 'pat' | 'mat' | 'muted'
-> = {
+const ROLE_VARIANT: Record<BotRole, 'default' | 'pat' | 'mat' | 'muted'> = {
   main: 'default',
   pat: 'pat',
   mat: 'mat',
