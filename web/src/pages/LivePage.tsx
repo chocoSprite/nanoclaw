@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Inbox } from 'lucide-react';
 import { fetchLiveGroups } from '../lib/api';
 import { liveStore, useLiveGroups } from '../lib/live-store';
 import { GroupLiveCard } from '../components/GroupLiveCard';
+import { SessionDetailDrawer } from '../components/SessionDetailDrawer';
 import { Skeleton } from '../components/ui/skeleton';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
@@ -34,6 +35,14 @@ export function LivePage() {
   const running = groups.filter((g) => g.containerStatus === 'running').length;
   const total = groups.length;
 
+  const [selectedJid, setSelectedJid] = useState<string | null>(null);
+  // Re-resolve the selected group on every render so the drawer picks up
+  // live-store mutations; if the group has disappeared from the roster,
+  // drop it so the drawer closes itself.
+  const selected = selectedJid
+    ? (groups.find((g) => g.jid === selectedJid) ?? null)
+    : null;
+
   return (
     <div className="px-4 py-5 sm:px-6 sm:py-6">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
@@ -52,11 +61,22 @@ export function LivePage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {groups.map((g) => (
-              <GroupLiveCard key={g.jid} group={g} />
+              <button
+                key={g.jid}
+                type="button"
+                onClick={() => setSelectedJid(g.jid)}
+                className="cursor-pointer rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <GroupLiveCard group={g} />
+              </button>
             ))}
           </div>
         )}
       </div>
+      <SessionDetailDrawer
+        group={selected}
+        onClose={() => setSelectedJid(null)}
+      />
     </div>
   );
 }
