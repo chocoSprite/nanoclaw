@@ -125,25 +125,36 @@ function TaskRow({
     <>
       <Card>
         <CardContent className="flex flex-col gap-2.5 p-4">
-          {/* Row 1: chevron + group name + status + actions (right) */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              aria-label={expanded ? '접기' : '펼치기'}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
-            >
+          {/* Row 1: chevron + group name + status + actions (right) — whole row toggles expand */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setExpanded((v) => !v)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setExpanded((v) => !v);
+              }
+            }}
+            aria-expanded={expanded}
+            aria-label={expanded ? '접기' : '펼치기'}
+            className="flex cursor-pointer select-none items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="shrink-0 text-muted-foreground">
               {expanded ? (
                 <ChevronDown className="size-4" />
               ) : (
                 <ChevronRight className="size-4" />
               )}
-            </button>
+            </span>
             <span className="truncate font-mono text-sm font-semibold">
               {task.group_folder}
             </span>
             <StatusBadge status={task.status} />
-            <div className="ml-auto flex items-center gap-1">
+            <div
+              className="ml-auto flex items-center gap-1"
+              onClick={(e) => e.stopPropagation()}
+            >
               {task.status === 'paused' ? (
                 <Button
                   size="sm"
