@@ -44,8 +44,10 @@ export interface RegisteredGroupLite {
 }
 
 import type { AgentEventV1 } from '../agent-events.js';
+import type { LogEntry } from './services/logs-service.js';
 
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }
   | { type: 'event'; event: AgentEventV1 }
-  | { type: 'roster'; groups: RegisteredGroupLite[] };
+  | { type: 'roster'; groups: RegisteredGroupLite[] }
+  | { type: 'log'; entry: LogEntry };

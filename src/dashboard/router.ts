@@ -8,10 +8,39 @@ import { runInIsolation } from './isolation.js';
 import { logger } from '../logger.js';
 import type { AutomationService } from './services/automation-service.js';
 import type { GroupsService } from './services/groups-service.js';
+import type {
+  LogFilter,
+  LogLevel,
+  LogsService,
+} from './services/logs-service.js';
 
 export interface RouterDeps {
   groups: GroupsService;
   automation: AutomationService;
+  logs: LogsService;
+}
+
+const LOG_LEVELS: readonly LogLevel[] = [
+  'debug',
+  'info',
+  'warn',
+  'error',
+  'fatal',
+];
+
+function parseLogFilter(req: Request): LogFilter {
+  const filter: LogFilter = {};
+  const lvl = typeof req.query.level === 'string' ? req.query.level : '';
+  if ((LOG_LEVELS as readonly string[]).includes(lvl)) {
+    filter.level = lvl as LogLevel;
+  }
+  if (typeof req.query.group === 'string' && req.query.group) {
+    filter.group = req.query.group;
+  }
+  if (typeof req.query.search === 'string' && req.query.search) {
+    filter.search = req.query.search;
+  }
+  return filter;
 }
 
 export function createRouter(deps: RouterDeps): Router {
@@ -99,6 +128,23 @@ export function createRouter(deps: RouterDeps): Router {
       return;
     }
     res.json({ v: 1, ok: true });
+  });
+
+  // --- Logs ---
+
+  r.get('/logs/recent', async (req, res, next) => {
+    try {
+      const filter = parseLogFilter(req);
+      const rawLimit = Number.parseInt(String(req.query.limit ?? '200'), 10);
+      const limit =
+        Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 1000
+          ? rawLimit
+          : 200;
+      const entries = await deps.logs.readRecent(filter, limit);
+      res.json({ v: 1, entries });
+    } catch (err) {
+      next(err);
+    }
   });
 
   // Layer C: final error handler so a throwing handler cannot crash the host.

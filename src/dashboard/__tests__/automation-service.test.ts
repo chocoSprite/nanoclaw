@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type Mock,
+} from 'vitest';
 import {
   _closeDatabase,
   _initTestDatabase,
@@ -30,13 +38,17 @@ function makeTask(
 }
 
 describe('AutomationService', () => {
-  let onTasksChanged: ReturnType<typeof vi.fn>;
+  let onTasksChanged: Mock;
   let service: AutomationService;
 
   beforeEach(() => {
     _initTestDatabase();
     onTasksChanged = vi.fn();
-    service = new AutomationService({ onTasksChanged });
+    service = new AutomationService({
+      onTasksChanged: () => {
+        onTasksChanged();
+      },
+    });
   });
 
   afterEach(() => {

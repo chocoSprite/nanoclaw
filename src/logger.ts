@@ -1,78 +1,88 @@
+/**
+ * Structured JSON logger — emits pino-compatible lines so the output can be
+ * parsed by the dashboard `/logs` stream and made human-readable via
+ * `pino-pretty` (see `npm run tail`).
+ *
+ * Schema per line (one JSON object, terminated by newline):
+ *   { "level": 30, "time": 1745..., "pid": 12345, "msg": "...", "...extras": ... }
+ *
+ * Level numeric values match pino:
+ *   debug 20 · info 30 · warn 40 · error 50 · fatal 60
+ *
+ * warn and above go to stderr so launchd's StandardErrorPath keeps its split.
+ */
 const LEVELS = { debug: 20, info: 30, warn: 40, error: 50, fatal: 60 } as const;
 type Level = keyof typeof LEVELS;
-
-const COLORS: Record<Level, string> = {
-  debug: '\x1b[34m',
-  info: '\x1b[32m',
-  warn: '\x1b[33m',
-  error: '\x1b[31m',
-  fatal: '\x1b[41m\x1b[37m',
-};
-const KEY_COLOR = '\x1b[35m';
-const MSG_COLOR = '\x1b[36m';
-const RESET = '\x1b[39m';
-const FULL_RESET = '\x1b[0m';
 
 const threshold =
   LEVELS[(process.env.LOG_LEVEL as Level) || 'info'] ?? LEVELS.info;
 
-function formatErr(err: unknown): string {
+function serializeErr(err: unknown): Record<string, unknown> | string {
   if (err instanceof Error) {
-    return `{\n      "type": "${err.constructor.name}",\n      "message": "${err.message}",\n      "stack":\n          ${err.stack}\n    }`;
-  }
-  return JSON.stringify(err);
-}
-
-function formatData(data: Record<string, unknown>): string {
-  let out = '';
-  for (const [k, v] of Object.entries(data)) {
-    if (k === 'err') {
-      out += `\n    ${KEY_COLOR}err${RESET}: ${formatErr(v)}`;
-    } else {
-      out += `\n    ${KEY_COLOR}${k}${RESET}: ${JSON.stringify(v)}`;
+    const base: Record<string, unknown> = {
+      type: err.constructor.name,
+      message: err.message,
+      stack: err.stack,
+    };
+    // Walk err.cause chain — pino-pretty renders this natively.
+    const cause = (err as { cause?: unknown }).cause;
+    if (cause !== undefined) {
+      base.cause = serializeErr(cause);
     }
+    return base;
   }
-  return out;
+  if (err === null || err === undefined) return String(err);
+  if (typeof err === 'object') return err as Record<string, unknown>;
+  return String(err);
 }
 
-function ts(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+function replacer(_key: string, value: unknown): unknown {
+  // Avoid circular JSON explosions; best-effort only.
+  if (typeof value === 'bigint') return value.toString();
+  return value;
 }
 
-function log(
+function emit(
   level: Level,
   dataOrMsg: Record<string, unknown> | string,
   msg?: string,
 ): void {
   if (LEVELS[level] < threshold) return;
-  const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
-  const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
+
+  const record: Record<string, unknown> = {
+    level: LEVELS[level],
+    time: Date.now(),
+    pid: process.pid,
+  };
+
   if (typeof dataOrMsg === 'string') {
-    stream.write(
-      `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${dataOrMsg}${RESET}\n`,
-    );
+    record.msg = dataOrMsg;
   } else {
-    stream.write(
-      `[${ts()}] ${tag} (${process.pid}): ${MSG_COLOR}${msg}${RESET}${formatData(dataOrMsg)}\n`,
-    );
+    for (const [k, v] of Object.entries(dataOrMsg)) {
+      record[k] = k === 'err' ? serializeErr(v) : v;
+    }
+    if (msg !== undefined) record.msg = msg;
   }
+
+  const line = JSON.stringify(record, replacer) + '\n';
+  const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
+  stream.write(line);
 }
 
 export const logger = {
   debug: (dataOrMsg: Record<string, unknown> | string, msg?: string) =>
-    log('debug', dataOrMsg, msg),
+    emit('debug', dataOrMsg, msg),
   info: (dataOrMsg: Record<string, unknown> | string, msg?: string) =>
-    log('info', dataOrMsg, msg),
+    emit('info', dataOrMsg, msg),
   warn: (dataOrMsg: Record<string, unknown> | string, msg?: string) =>
-    log('warn', dataOrMsg, msg),
+    emit('warn', dataOrMsg, msg),
   error: (dataOrMsg: Record<string, unknown> | string, msg?: string) =>
-    log('error', dataOrMsg, msg),
+    emit('error', dataOrMsg, msg),
   fatal: (dataOrMsg: Record<string, unknown> | string, msg?: string) =>
-    log('fatal', dataOrMsg, msg),
+    emit('fatal', dataOrMsg, msg),
 };
 
-// Route uncaught errors through logger so they get timestamps in stderr
+// Route uncaught errors through logger so they get structured timestamps.
 process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'Uncaught exception');
   process.exit(1);

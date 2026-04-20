@@ -2,8 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { LivePage } from './pages/LivePage';
 import { AutomationPage } from './pages/AutomationPage';
+import { LogsPage } from './pages/LogsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
-import { Heart, ScrollText } from 'lucide-react';
+import { Heart } from 'lucide-react';
 
 export default function App() {
   return (
@@ -28,22 +29,7 @@ export default function App() {
             />
           }
         />
-        <Route
-          path="/logs"
-          element={
-            <PlaceholderPage
-              icon={ScrollText}
-              title="Logs"
-              description="NanoClaw 호스트 + 컨테이너 stderr 를 레벨·그룹·컴포넌트로 필터링해 실시간 조회합니다."
-              planned={[
-                'pino JSON + pretty 혼합 파서',
-                '레벨 · 그룹 · 컴포넌트 3축 필터',
-                '자동 새로고침 토글 · LIVE 배지',
-                '스니펫 하이라이트',
-              ]}
-            />
-          }
-        />
+        <Route path="/logs" element={<LogsPage />} />
       </Routes>
     </AppShell>
   );

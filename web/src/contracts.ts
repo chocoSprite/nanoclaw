@@ -116,7 +116,22 @@ export interface TaskRunLogDto {
   error: string | null;
 }
 
+// --- Logs ---
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+export interface LogEntry {
+  level: LogLevel;
+  levelNum: number;
+  time: number;
+  pid?: number;
+  msg: string;
+  group?: string;
+  raw: Record<string, unknown>;
+}
+
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }
   | { type: 'event'; event: AgentEventV1 }
-  | { type: 'roster'; groups: RegisteredGroupLite[] };
+  | { type: 'roster'; groups: RegisteredGroupLite[] }
+  | { type: 'log'; entry: LogEntry };

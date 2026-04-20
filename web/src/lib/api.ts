@@ -1,5 +1,7 @@
 import type {
   LiveGroupState,
+  LogEntry,
+  LogLevel,
   ScheduledTaskDto,
   TaskRunLogDto,
 } from '../contracts';
@@ -104,4 +106,27 @@ export function deleteTask(id: string): Promise<TaskMutationResponse> {
     `/api/automation/tasks/${encodeURIComponent(id)}`,
     'DELETE',
   );
+}
+
+interface LogsResponse {
+  v: 1;
+  entries: LogEntry[];
+}
+
+export interface LogsFilterQuery {
+  level?: LogLevel;
+  group?: string;
+  search?: string;
+  limit?: number;
+}
+
+export function fetchLogs(q: LogsFilterQuery = {}): Promise<LogEntry[]> {
+  const params = new URLSearchParams();
+  if (q.level) params.set('level', q.level);
+  if (q.group) params.set('group', q.group);
+  if (q.search) params.set('search', q.search);
+  if (q.limit) params.set('limit', String(q.limit));
+  const qs = params.toString();
+  const path = qs ? `/api/logs/recent?${qs}` : '/api/logs/recent';
+  return getJson<LogsResponse>(path).then((r) => r.entries);
 }

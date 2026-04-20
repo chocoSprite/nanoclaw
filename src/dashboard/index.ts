@@ -1,4 +1,5 @@
 import type { AgentEventBus } from '../agent-events.js';
+import { LOGS_DIR } from '../config.js';
 import type { GroupQueue } from '../group-queue.js';
 import { logger } from '../logger.js';
 import { LiveStateReader } from './adapters/state-adapter.js';
@@ -9,6 +10,7 @@ import { createRouter } from './router.js';
 import { createHttpServer } from './server.js';
 import { AutomationService } from './services/automation-service.js';
 import { GroupsService } from './services/groups-service.js';
+import { LogsService } from './services/logs-service.js';
 import { EventThrottle } from './throttle.js';
 import { WsHub } from './ws-hub.js';
 
@@ -58,15 +60,21 @@ export async function startDashboard(
       onTasksChanged: deps.onTasksChanged,
     });
 
+    const logsService = new LogsService({ logsDir: LOGS_DIR });
+
     const router = createRouter({
       groups: groupsService,
       automation: automationService,
+      logs: logsService,
     });
     const { server } = createHttpServer({ router });
 
     const hub = new WsHub(server, groupsService);
     const throttle = new EventThrottle((ev) => hub.broadcast(ev));
     const unsubscribe = deps.agentEvents.on('*', (ev) => throttle.push(ev));
+    const unsubscribeLogs = logsService.subscribe((entry) => {
+      hub.broadcastFrame({ type: 'log', entry });
+    });
 
     server.on('error', (err) => {
       logger.error({ scope: 'dashboard', err }, 'http server runtime error');
@@ -92,6 +100,8 @@ export async function startDashboard(
       port: cfg.port,
       async stop(): Promise<void> {
         unsubscribe();
+        unsubscribeLogs();
+        await logsService.shutdown();
         liveCache.detach();
         hub.close();
         await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -44,10 +44,12 @@ export class WsHub {
 
   broadcast(ev: AgentEventV1): void {
     if (this.closed) return;
-    const payload = JSON.stringify({
-      type: 'event',
-      event: ev,
-    } satisfies WsMessage);
+    this.broadcastFrame({ type: 'event', event: ev });
+  }
+
+  broadcastFrame(frame: WsMessage): void {
+    if (this.closed) return;
+    const payload = JSON.stringify(frame);
     for (const ws of this.clients) {
       if (ws.readyState !== ws.OPEN) continue;
       try {
