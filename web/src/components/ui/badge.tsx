@@ -15,6 +15,10 @@ const badgeVariants = cva(
         warning: 'border-warning/30 bg-warning/10 text-warning',
         info: 'border-info/30 bg-info/10 text-info',
         muted: 'border-border/60 bg-muted text-muted-foreground',
+        // pat/mat bot signature colors — distinct from SDK badge palette so
+        // role (pat/mat) ≠ SDK (claude/codex) visually.
+        pat: 'border-[#F8D95E]/45 bg-[#F8D95E]/15 text-[#F8D95E]',
+        mat: 'border-[#E25845]/45 bg-[#E25845]/15 text-[#E25845]',
       },
     },
     defaultVariants: {

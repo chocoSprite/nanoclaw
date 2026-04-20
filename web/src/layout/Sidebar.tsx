@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   Activity,
+  Boxes,
   CalendarClock,
   ScrollText,
   type LucideIcon,
@@ -21,6 +22,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Live',
     description: '실시간 그룹 상태',
     icon: Activity,
+  },
+  {
+    to: '/groups',
+    label: 'Groups',
+    description: '그룹 설정 편집',
+    icon: Boxes,
   },
   {
     to: '/automation',

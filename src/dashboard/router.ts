@@ -6,7 +6,10 @@ import {
 } from 'express';
 import { runInIsolation } from './isolation.js';
 import { logger } from '../logger.js';
+import type { ResetResult } from '../session-reset.js';
+import type { RegisteredGroup } from '../types.js';
 import type { AutomationService } from './services/automation-service.js';
+import type { GroupsEditorService } from './services/groups-editor-service.js';
 import type { GroupsService } from './services/groups-service.js';
 import type { LogSignalsService } from './services/log-signals-service.js';
 import type {
@@ -17,9 +20,15 @@ import type {
 
 export interface RouterDeps {
   groups: GroupsService;
+  groupsEditor: GroupsEditorService;
   automation: AutomationService;
   logs: LogsService;
   signals: LogSignalsService;
+  /**
+   * Reset a group's session. Wrapped around host `resetGroupSession` so
+   * the router does not need to know about terminateGroup/dataDir/etc.
+   */
+  resetSession: (jid: string, group: RegisteredGroup) => Promise<ResetResult>;
 }
 
 const LOG_LEVELS: readonly LogLevel[] = [
@@ -58,6 +67,58 @@ export function createRouter(deps: RouterDeps): Router {
       'GET /api/groups/live',
     );
     res.json({ v: 1, groups: out ?? [] });
+  });
+
+  r.get('/groups/editor', (_req, res) => {
+    const out = runInIsolation(
+      () => deps.groupsEditor.listForEditor(),
+      'GET /api/groups/editor',
+    );
+    res.json({ v: 1, groups: out ?? [] });
+  });
+
+  r.patch('/groups/:jid', (req, res) => {
+    const body = (req.body ?? {}) as { model?: string | null };
+    // `model` not present → nothing to change. Treat as no-op 400 for
+    // clarity rather than silent success.
+    if (!('model' in body)) {
+      res.status(400).json({ v: 1, ok: false, error: 'no_field' });
+      return;
+    }
+    const rawModel = body.model;
+    const model =
+      rawModel === null || rawModel === undefined ? null : String(rawModel);
+    const result = runInIsolation(
+      () => deps.groupsEditor.patchModel(req.params.jid, model),
+      'PATCH /api/groups/:jid',
+    );
+    if (!result) {
+      // isolation swallowed an error — 500 is fine; router-level handler
+      // will also catch but this is defensive.
+      res.status(500).json({ v: 1, ok: false, error: 'internal' });
+      return;
+    }
+    if (!result.ok) {
+      const status = result.error === 'not_found' ? 404 : 400;
+      res.status(status).json({ v: 1, ok: false, error: result.error });
+      return;
+    }
+    res.json({ v: 1, ok: true, group: result.view });
+  });
+
+  r.post('/groups/:jid/reset-session', async (req, res, next) => {
+    try {
+      const jid = req.params.jid;
+      const group = deps.groupsEditor.lookupGroup(jid);
+      if (!group) {
+        res.status(404).json({ v: 1, ok: false, error: 'not_found' });
+        return;
+      }
+      const result = await deps.resetSession(jid, group);
+      res.json({ v: 1, ok: true, result });
+    } catch (err) {
+      next(err);
+    }
   });
 
   // --- Automation ---

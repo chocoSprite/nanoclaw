@@ -195,6 +195,26 @@ export function _setRegisteredGroups(
   state.registeredGroups = groups;
 }
 
+/**
+ * Re-read registered_groups from DB and replace the in-memory map.
+ *
+ * Called by the dashboard after DB-write edits (model switch, etc.) so
+ * subsequent container spawns pick up new config without a host restart.
+ * Channels/scheduler/ipc all access registeredGroups via
+ * `() => state.registeredGroups` callbacks, so the new snapshot fan-outs
+ * automatically on the next read.
+ */
+export function reloadGroupState(): void {
+  state.registeredGroups = getAllRegisteredGroups();
+  logger.info(
+    {
+      scope: 'group-state',
+      groupCount: Object.keys(state.registeredGroups).length,
+    },
+    'Registered groups reloaded',
+  );
+}
+
 export interface AvailableGroup {
   jid: string;
   name: string;

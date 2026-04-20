@@ -645,6 +645,8 @@ async function main(): Promise<void> {
     onTasksChanged: () => {
       writeAllTasksSnapshots(state.registeredGroups, getAllTasks());
     },
+    terminateGroup: (jid) => queue.terminateGroup(jid),
+    deleteSession,
   }).catch((err) => {
     logger.error({ err }, 'Dashboard startup rejected unexpectedly');
   });

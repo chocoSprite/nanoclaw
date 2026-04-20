@@ -1,9 +1,11 @@
 import type {
+  GroupEditorView,
   LiveGroupState,
   LogEntry,
   LogLevel,
   LogSignal,
   ScheduledTaskDto,
+  SessionResetResult,
   TaskRunLogDto,
 } from '../contracts';
 
@@ -159,4 +161,76 @@ export function dismissSignal(id: number): Promise<LogSignal | undefined> {
     `/api/logs/signals/${id}/dismiss`,
     'POST',
   ).then((r) => r.signal);
+}
+
+// --- Groups editor ---
+
+interface GroupsEditorResponse {
+  v: 1;
+  groups: GroupEditorView[];
+}
+
+interface PatchGroupResponse {
+  v: 1;
+  ok: boolean;
+  group?: GroupEditorView;
+  error?: string;
+}
+
+interface ResetSessionResponse {
+  v: 1;
+  ok: boolean;
+  result?: SessionResetResult;
+  error?: string;
+}
+
+export function fetchGroups(): Promise<GroupEditorView[]> {
+  return getJson<GroupsEditorResponse>('/api/groups/editor').then(
+    (r) => r.groups,
+  );
+}
+
+export async function patchGroup(
+  jid: string,
+  body: { model: string | null },
+): Promise<GroupEditorView> {
+  const res = await fetch(`/api/groups/${encodeURIComponent(jid)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const j = (await res.json()) as { error?: string };
+      detail = j?.error ? ` (${j.error})` : '';
+    } catch {
+      // ignore
+    }
+    throw new Error(`PATCH /api/groups/${jid} → HTTP ${res.status}${detail}`);
+  }
+  const data = (await res.json()) as PatchGroupResponse;
+  if (!data.ok || !data.group) {
+    throw new Error(`PATCH /api/groups/${jid} returned ok=false`);
+  }
+  return data.group;
+}
+
+export async function resetGroupSession(
+  jid: string,
+): Promise<SessionResetResult> {
+  const res = await fetch(
+    `/api/groups/${encodeURIComponent(jid)}/reset-session`,
+    { method: 'POST', headers: { Accept: 'application/json' } },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `POST /api/groups/${jid}/reset-session → HTTP ${res.status}`,
+    );
+  }
+  const data = (await res.json()) as ResetSessionResponse;
+  if (!data.ok || !data.result) {
+    throw new Error(`reset-session returned ok=false`);
+  }
+  return data.result;
 }

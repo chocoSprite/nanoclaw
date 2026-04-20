@@ -160,3 +160,64 @@ export type WsMessage =
   | { type: 'roster'; groups: RegisteredGroupLite[] }
   | { type: 'log'; entry: LogEntry }
   | { type: 'signal'; status: SignalChangeStatus; signal: LogSignal };
+
+// --- Groups editor (REST DTOs) ---
+
+export type BotRole = 'main' | 'pat' | 'mat' | 'solo';
+export type SkillOrigin = 'global' | 'group';
+
+export interface SkillEntry {
+  name: string;
+  origin: SkillOrigin;
+}
+
+export interface GroupSessionInfo {
+  sessionId: string | null;
+}
+
+export interface GroupEditorView {
+  jid: string;
+  name: string;
+  folder: string;
+  sdk: SdkKind;
+  model: string | null;
+  isMain: boolean;
+  botRole: BotRole;
+  trigger: string;
+  claudeMdPath: string;
+  skills: SkillEntry[];
+  session: GroupSessionInfo;
+}
+
+export interface SessionResetResult {
+  groupName: string;
+  folder: string;
+  sdkType: 'codex' | 'claude';
+  errors: string[];
+}
+
+/**
+ * Claude model IDs the dashboard editor will send. Keep in sync with
+ * `src/dashboard/config.ts::CLAUDE_MODEL_WHITELIST`.
+ */
+export const CLAUDE_MODELS = [
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5-20251001',
+] as const;
+
+export type ClaudeModelId = (typeof CLAUDE_MODELS)[number];
+
+export const CLAUDE_MODEL_LABELS: Record<ClaudeModelId, string> = {
+  'claude-opus-4-6': 'Opus 4.6',
+  'claude-sonnet-4-6': 'Sonnet 4.6',
+  'claude-haiku-4-5-20251001': 'Haiku 4.5',
+};
+
+/**
+ * Display-only label for Codex groups. The dashboard does not switch
+ * Codex models; the value reflects what `~/.codex/config.toml` carries
+ * as the global default at the time of writing. Update this constant
+ * (and the relevant memory) when Codex CLI upgrades its default model.
+ */
+export const CODEX_DEFAULT_MODEL_DISPLAY = 'gpt-5.4';

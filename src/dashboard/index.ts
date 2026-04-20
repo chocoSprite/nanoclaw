@@ -1,7 +1,12 @@
+import path from 'node:path';
+
 import type { AgentEventBus } from '../agent-events.js';
-import { LOGS_DIR } from '../config.js';
+import { DATA_DIR, GROUPS_DIR, LOGS_DIR } from '../config.js';
+import { reloadGroupState, state } from '../group-state.js';
 import type { GroupQueue } from '../group-queue.js';
 import { logger } from '../logger.js';
+import { resetGroupSession } from '../session-reset.js';
+import { updateGroupModel } from '../db.js';
 import { LiveStateReader } from './adapters/state-adapter.js';
 import { LiveQueueReader } from './adapters/queue-adapter.js';
 import { dashboardConfig, signalsConfig } from './config.js';
@@ -9,9 +14,11 @@ import { LiveStateCache } from './live-state.js';
 import { createRouter } from './router.js';
 import { createHttpServer } from './server.js';
 import { AutomationService } from './services/automation-service.js';
+import { GroupsEditorService } from './services/groups-editor-service.js';
 import { GroupsService } from './services/groups-service.js';
 import { LogSignalsService } from './services/log-signals-service.js';
 import { LogsService } from './services/logs-service.js';
+import { SkillScanner } from './services/skill-scanner.js';
 import { EventThrottle } from './throttle.js';
 import { WsHub } from './ws-hub.js';
 
@@ -21,6 +28,14 @@ export interface DashboardDeps {
   /** Called after any dashboard-originated task mutation. Host uses this to
    *  rewrite per-group IPC task snapshots so containers see fresh state. */
   onTasksChanged: () => void;
+  /**
+   * Terminate a running container for a group. Used by the
+   * `POST /api/groups/:jid/reset-session` endpoint. Host injects
+   * `queue.terminateGroup`.
+   */
+  terminateGroup: (jid: string) => Promise<void>;
+  /** Delete the DB session record for a group folder. */
+  deleteSession: (folder: string) => void;
 }
 
 export interface DashboardHandle {
@@ -57,6 +72,20 @@ export async function startDashboard(
       liveCache,
     );
 
+    const skillScanner = new SkillScanner({
+      globalSkillsDir: path.resolve(process.cwd(), 'container', 'skills'),
+      groupsDir: GROUPS_DIR,
+    });
+
+    const groupsEditorService = new GroupsEditorService({
+      state: stateReader,
+      skills: skillScanner,
+      getSessions: () => state.sessions,
+      groupsDir: GROUPS_DIR,
+      updateGroupModel,
+      reloadGroupState,
+    });
+
     const automationService = new AutomationService({
       onTasksChanged: deps.onTasksChanged,
     });
@@ -78,9 +107,17 @@ export async function startDashboard(
 
     const router = createRouter({
       groups: groupsService,
+      groupsEditor: groupsEditorService,
       automation: automationService,
       logs: logsService,
       signals: logSignalsService,
+      resetSession: (jid, group) =>
+        resetGroupSession(jid, group, {
+          dataDir: DATA_DIR,
+          sessions: state.sessions,
+          terminateGroup: deps.terminateGroup,
+          deleteSession: deps.deleteSession,
+        }),
     });
     const { server } = createHttpServer({ router });
 

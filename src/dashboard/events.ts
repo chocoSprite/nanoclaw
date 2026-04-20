@@ -51,8 +51,21 @@ import type {
   LogSignal,
   SignalChangeStatus,
 } from './services/log-signals-service.js';
+import type {
+  BotRole,
+  GroupEditorView,
+  GroupSessionInfo,
+} from './services/groups-editor-service.js';
+import type { SkillEntry, SkillOrigin } from './services/skill-scanner.js';
 
 export type { LogSignal, SignalChangeStatus };
+export type {
+  BotRole,
+  GroupEditorView,
+  GroupSessionInfo,
+  SkillEntry,
+  SkillOrigin,
+};
 
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }

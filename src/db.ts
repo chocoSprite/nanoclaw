@@ -609,6 +609,23 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
   );
 }
 
+/**
+ * Targeted UPDATE of the `model` column for a single registered group.
+ *
+ * Used by the dashboard editor to switch Claude models without touching
+ * the rest of the row. Prefer this over `setRegisteredGroup` for partial
+ * edits — the upsert form loses columns that `getRegisteredGroup` does
+ * not surface (e.g. `mat_config`).
+ *
+ * Returns true when a row was updated, false when the JID was not found.
+ */
+export function updateGroupModel(jid: string, model: string | null): boolean {
+  const info = db
+    .prepare('UPDATE registered_groups SET model = ? WHERE jid = ?')
+    .run(model, jid);
+  return info.changes > 0;
+}
+
 export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   const rows = db.prepare('SELECT * FROM registered_groups').all() as Array<{
     jid: string;

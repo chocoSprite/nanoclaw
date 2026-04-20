@@ -44,3 +44,25 @@ export function signalsConfig(): SignalsConfig {
     sweepIntervalMs: envInt('SIGNAL_SWEEP_INTERVAL_MS', 300_000),
   };
 }
+
+/**
+ * Whitelist of Claude model IDs that the dashboard accepts for the
+ * groups editor `PATCH /api/groups/:jid` endpoint. Keep in sync with
+ * `web/src/contracts.ts::CLAUDE_MODELS`.
+ *
+ * `null` is also accepted and means "fall back to the SDK default".
+ */
+export const CLAUDE_MODEL_WHITELIST = [
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5-20251001',
+] as const;
+
+export type ClaudeModelId = (typeof CLAUDE_MODEL_WHITELIST)[number];
+
+export function isValidClaudeModel(value: unknown): value is ClaudeModelId {
+  return (
+    typeof value === 'string' &&
+    (CLAUDE_MODEL_WHITELIST as readonly string[]).includes(value)
+  );
+}
