@@ -41,6 +41,8 @@ export class GroupsService {
         containerStatus,
         sdk: (group.sdk ?? 'codex') as SdkKind,
         pendingSinceTs: q?.pendingSinceTs ?? null,
+        recentTools: live?.recentTools ?? [],
+        sessionId: live?.sessionId ?? null,
       });
     }
     return out;

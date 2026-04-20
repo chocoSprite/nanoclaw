@@ -1,23 +1,32 @@
 import type { AgentEventBus, AgentEventV1 } from '../agent-events.js';
-import type { ContainerStatus, SdkKind } from './events.js';
+import type { ContainerStatus, RecentToolCall, SdkKind } from './events.js';
 
 /**
  * Per-jid live state derived from the event stream. Drives the "currentTool"
  * shown on LiveCard plus the coarse containerStatus indicator. Reducer rules
  * match the plan spec:
  *
- *   status.started     → containerStatus='running', sdk set
- *   tool.use           → currentTool=name, lastToolAt=ts (Claude only)
- *   tool.result        → no change (keep last tool visible)
+ *   status.started     → containerStatus='running', sdk set, recentTools reset,
+ *                        sessionId captured (if present on the event)
+ *   tool.use           → currentTool=name, lastToolAt=ts, unshift RecentToolCall
+ *                        (cap 5, drop oldest)
+ *   tool.result        → find matching toolUseId in recentTools and set isError;
+ *                        fall back to newest entry when toolUseId missing
  *   status.ended       → currentTool=null, containerStatus=idle|error
  *   container.spawned  → containerStatus='running' if unknown
  *   container.exited   → if exitCode!==0 then 'error'; else clamp idle
+ *                        (recentTools and sessionId preserved across the next
+ *                        status.started so the card still shows what happened)
  */
+export const RECENT_TOOLS_CAP = 5;
+
 export interface LiveJidState {
   currentTool: string | null;
   lastToolAt: string | null;
   containerStatus: ContainerStatus;
   sdk: SdkKind | null;
+  recentTools: RecentToolCall[];
+  sessionId: string | null;
 }
 
 function emptyState(): LiveJidState {
@@ -26,6 +35,8 @@ function emptyState(): LiveJidState {
     lastToolAt: null,
     containerStatus: 'idle',
     sdk: null,
+    recentTools: [],
+    sessionId: null,
   };
 }
 
@@ -52,6 +63,10 @@ export class LiveStateCache {
       case 'status.started':
         s.containerStatus = 'running';
         s.sdk = ev.sdk;
+        s.sessionId = ev.sessionId ?? null;
+        // New session boundary — clear the history so the card stops showing
+        // the previous turn's tools.
+        s.recentTools = [];
         break;
       case 'status.ended':
         s.currentTool = null;
@@ -68,15 +83,32 @@ export class LiveStateCache {
           s.currentTool = null;
         }
         break;
-      case 'tool.use':
+      case 'tool.use': {
         s.currentTool = ev.toolName;
         s.lastToolAt = ev.ts;
+        const entry: RecentToolCall = {
+          toolName: ev.toolName,
+          at: ev.ts,
+        };
+        if (ev.inputSummary !== undefined) entry.inputSummary = ev.inputSummary;
+        if (ev.toolUseId !== undefined) entry.toolUseId = ev.toolUseId;
+        s.recentTools = [entry, ...s.recentTools].slice(0, RECENT_TOOLS_CAP);
         break;
-      case 'tool.result':
-        // Intentional no-op: keep the last tool name visible on the card
-        // so it doesn't flicker between use/result pairs. isError handling
-        // is for the frontend (flicker class).
+      }
+      case 'tool.result': {
+        // Keep currentTool visible (no flicker) but stamp the matching history
+        // entry's isError so the UI can color it.
+        if (s.recentTools.length === 0) break;
+        const next = s.recentTools.slice();
+        let idx = -1;
+        if (ev.toolUseId !== undefined) {
+          idx = next.findIndex((t) => t.toolUseId === ev.toolUseId);
+        }
+        if (idx < 0) idx = 0; // newest entry fallback
+        next[idx] = { ...next[idx], isError: ev.isError };
+        s.recentTools = next;
         break;
+      }
     }
 
     this.byJid.set(jid, s);

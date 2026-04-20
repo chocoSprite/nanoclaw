@@ -25,6 +25,18 @@ export {
 export type ContainerStatus = 'idle' | 'running' | 'error';
 export type SdkKind = 'claude' | 'codex';
 
+/**
+ * One entry in the per-group recent tool call ring buffer. Populated from
+ * `tool.use` events and updated when the matching `tool.result` arrives.
+ */
+export interface RecentToolCall {
+  toolName: string;
+  inputSummary?: string;
+  at: string; // ISO 8601
+  isError?: boolean;
+  toolUseId?: string;
+}
+
 export interface LiveGroupState {
   jid: string;
   groupFolder: string;
@@ -35,6 +47,10 @@ export interface LiveGroupState {
   sdk: SdkKind;
   /** ms since epoch when pendingMessages flipped true on the server, null if no pending. */
   pendingSinceTs: number | null;
+  /** Most recent tool calls in this session, newest-first, capped at 5. */
+  recentTools: RecentToolCall[];
+  /** Session id carried on the most recent `status.started` for this group. */
+  sessionId: string | null;
 }
 
 export interface RegisteredGroupLite {

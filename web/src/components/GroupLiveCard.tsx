@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bot, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Badge } from './ui/badge';
+import { ToolCallHistory } from './ToolCallHistory';
 import { cn } from '../lib/utils';
 import type { LiveGroupState } from '../contracts';
 
@@ -56,42 +57,50 @@ export function GroupLiveCard({ group }: Props) {
         </div>
       </CardHeader>
 
-      <CardContent className="flex items-center justify-between gap-2 pt-0 sm:pt-0">
-        <div
-          className={cn(
-            'min-w-0 flex-1 truncate font-mono text-sm',
-            group.currentTool
-              ? 'text-foreground'
-              : 'italic text-muted-foreground',
+      <CardContent className="flex flex-col gap-3 pt-0 sm:pt-0">
+        <div className="flex items-center justify-between gap-2">
+          <div
+            className={cn(
+              'min-w-0 flex-1 truncate font-mono text-sm',
+              group.currentTool
+                ? 'text-foreground'
+                : 'italic text-muted-foreground',
+            )}
+          >
+            {group.currentTool ?? 'idle'}
+          </div>
+          {pendingSec !== null && (
+            <span
+              className={cn(
+                'shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tabular-nums',
+                pendingStuck
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive animate-pulse'
+                  : 'border-warning/40 bg-warning/10 text-warning',
+              )}
+              aria-label="pending lag"
+              title="메시지 대기 시간"
+            >
+              ⏳ {pendingSec}s
+            </span>
           )}
-        >
-          {group.currentTool ?? 'idle'}
+          {group.containerStatus === 'running' && elapsedSec !== null && (
+            <span
+              className={cn(
+                'shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tabular-nums',
+                stuck
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive animate-pulse'
+                  : 'border-border text-muted-foreground',
+              )}
+            >
+              {elapsedSec}s
+            </span>
+          )}
         </div>
-        {pendingSec !== null && (
-          <span
-            className={cn(
-              'shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tabular-nums',
-              pendingStuck
-                ? 'border-destructive/30 bg-destructive/10 text-destructive animate-pulse'
-                : 'border-warning/40 bg-warning/10 text-warning',
-            )}
-            aria-label="pending lag"
-            title="메시지 대기 시간"
-          >
-            ⏳ {pendingSec}s
-          </span>
-        )}
-        {group.containerStatus === 'running' && elapsedSec !== null && (
-          <span
-            className={cn(
-              'shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] tabular-nums',
-              stuck
-                ? 'border-destructive/30 bg-destructive/10 text-destructive animate-pulse'
-                : 'border-border text-muted-foreground',
-            )}
-          >
-            {elapsedSec}s
-          </span>
+        {group.recentTools.length > 0 && (
+          <ToolCallHistory
+            tools={group.recentTools}
+            pulseFirst={group.containerStatus === 'running'}
+          />
         )}
       </CardContent>
     </Card>

@@ -2,10 +2,13 @@ import { useSyncExternalStore } from 'react';
 import type {
   AgentEventV1,
   LiveGroupState,
+  RecentToolCall,
   RegisteredGroupLite,
   WsMessage,
 } from '../contracts';
 import { WsClient, type WsStatus } from './ws-client';
+
+export const RECENT_TOOLS_CAP = 5;
 
 /**
  * In-memory live store for the LivePage. Holds the current Map<jid, LiveGroupState>
@@ -48,7 +51,15 @@ class LiveStore {
 
   hydrate(groups: LiveGroupState[]): void {
     const next = new Map<string, LiveGroupState>();
-    for (const g of groups) next.set(g.jid, { ...g });
+    for (const g of groups) {
+      // Older server builds may omit recentTools/sessionId. Normalize defaults
+      // so the reducer and UI never see undefined.
+      next.set(g.jid, {
+        ...g,
+        recentTools: g.recentTools ?? [],
+        sessionId: g.sessionId ?? null,
+      });
+    }
     this.state = { ...this.state, groups: next };
     this.recomputeList();
     this.emit();
@@ -96,6 +107,8 @@ class LiveStore {
       case 'status.started':
         next.containerStatus = 'running';
         next.sdk = ev.sdk;
+        next.sessionId = ev.sessionId ?? null;
+        next.recentTools = [];
         break;
       case 'status.ended':
         next.currentTool = null;
@@ -112,13 +125,33 @@ class LiveStore {
           next.currentTool = null;
         }
         break;
-      case 'tool.use':
+      case 'tool.use': {
         next.currentTool = ev.toolName;
         next.lastToolAt = ev.ts;
+        const entry: RecentToolCall = {
+          toolName: ev.toolName,
+          at: ev.ts,
+        };
+        if (ev.inputSummary !== undefined) entry.inputSummary = ev.inputSummary;
+        if (ev.toolUseId !== undefined) entry.toolUseId = ev.toolUseId;
+        next.recentTools = [entry, ...prev.recentTools].slice(
+          0,
+          RECENT_TOOLS_CAP,
+        );
         break;
-      case 'tool.result':
-        // intentional no-op — prevents card flicker between use/result
+      }
+      case 'tool.result': {
+        if (prev.recentTools.length === 0) break;
+        const arr = prev.recentTools.slice();
+        let idx = -1;
+        if (ev.toolUseId !== undefined) {
+          idx = arr.findIndex((t) => t.toolUseId === ev.toolUseId);
+        }
+        if (idx < 0) idx = 0;
+        arr[idx] = { ...arr[idx], isError: ev.isError };
+        next.recentTools = arr;
         break;
+      }
       default:
         return; // unknown kind — drop
     }

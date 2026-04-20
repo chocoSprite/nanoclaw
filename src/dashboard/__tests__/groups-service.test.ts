@@ -217,6 +217,56 @@ describe('GroupsService', () => {
     expect(svc.listLive()[0].pendingSinceTs).toBe(ts);
   });
 
+  it('listLive defaults recentTools=[] and sessionId=null before any events', () => {
+    const state = new FakeStateReader([
+      { jid: 'slack:A', group: group('alpha') },
+    ]);
+    const queue = new FakeQueueReader([]);
+    const svc = new GroupsService(state, queue, new LiveStateCache());
+    const [g] = svc.listLive();
+    expect(g.recentTools).toEqual([]);
+    expect(g.sessionId).toBeNull();
+  });
+
+  it('listLive surfaces sessionId and recentTools from the live cache', () => {
+    const state = new FakeStateReader([
+      { jid: 'slack:A', group: group('alpha') },
+    ]);
+    const queue = new FakeQueueReader([]);
+    const live = new LiveStateCache();
+    const bus = new InProcessEventBus();
+    live.subscribe(bus);
+    const svc = new GroupsService(state, queue, live);
+
+    bus.emit({
+      v: 1,
+      kind: 'status.started',
+      ts: 'now',
+      groupFolder: 'alpha',
+      chatJid: 'slack:A',
+      sdk: 'claude',
+      sessionId: 'sess_xyz',
+    });
+    bus.emit({
+      v: 1,
+      kind: 'tool.use',
+      ts: 'now',
+      groupFolder: 'alpha',
+      chatJid: 'slack:A',
+      toolName: 'Read',
+      toolUseId: 'tu_1',
+      inputSummary: 'src/index.ts',
+    });
+    const [g] = svc.listLive();
+    expect(g.sessionId).toBe('sess_xyz');
+    expect(g.recentTools).toHaveLength(1);
+    expect(g.recentTools[0]).toMatchObject({
+      toolName: 'Read',
+      toolUseId: 'tu_1',
+      inputSummary: 'src/index.ts',
+    });
+  });
+
   it('listRoster flags queue.active accurately', () => {
     const state = new FakeStateReader([
       { jid: 'slack:A', group: group('alpha') },

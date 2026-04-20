@@ -9,6 +9,14 @@
 export type ContainerStatus = 'idle' | 'running' | 'error';
 export type SdkKind = 'claude' | 'codex';
 
+export interface RecentToolCall {
+  toolName: string;
+  inputSummary?: string;
+  at: string;
+  isError?: boolean;
+  toolUseId?: string;
+}
+
 export interface LiveGroupState {
   jid: string;
   groupFolder: string;
@@ -19,6 +27,8 @@ export interface LiveGroupState {
   sdk: SdkKind;
   /** ms since epoch when pendingMessages flipped true on the server, null if no pending. */
   pendingSinceTs: number | null;
+  recentTools: RecentToolCall[];
+  sessionId: string | null;
 }
 
 export interface RegisteredGroupLite {
