@@ -53,6 +53,14 @@ export interface ToolResultEvent extends BaseEvent {
  * Emitted by each adapter at the end of a turn with the token counts
  * reported by the underlying SDK. Claude sources `SDKResultSuccess.usage`;
  * Codex sources `turn.completed.usage`. Fields normalized to camelCase.
+ *
+ * Anthropic reports per-turn values with disjoint cache subsets — the
+ * Claude adapter passes them through directly. Codex reports cumulative
+ * thread totals and uses `cached_input_tokens` as a *breakdown* of
+ * `input_tokens`, not a sibling. The Codex adapter therefore: (a)
+ * converts cumulative → per-turn via `codexUsageDelta`, and (b) omits
+ * `cacheReadTokens` / `cacheCreationTokens` entirely so the web-side
+ * `totalContextTokens` sum does not double-count the cache subset.
  */
 export interface SessionUsageEvent extends BaseEvent {
   kind: 'session.usage';

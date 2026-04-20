@@ -170,4 +170,25 @@ describe('LiveStateCache — session.usage', () => {
     cache.apply(ev('container.exited', { exitCode: 0 }));
     expect(cache.get(JID)?.lastUsage?.inputTokens).toBe(400);
   });
+
+  // Codex adapter deliberately omits cacheReadTokens/cacheCreationTokens
+  // because Codex's `cached_input_tokens` is a breakdown of input_tokens,
+  // not a disjoint sibling. totalContextTokens() sums all three — if the
+  // Codex adapter populated cache fields, it would double-count.
+  it('Codex-shaped session.usage (no cache fields) keeps them undefined', () => {
+    const cache = new LiveStateCache();
+    cache.apply(
+      ev('session.usage', {
+        inputTokens: 3200,
+        outputTokens: 450,
+        model: 'gpt-5.4',
+      }),
+    );
+    const u = cache.get(JID)?.lastUsage;
+    expect(u?.inputTokens).toBe(3200);
+    expect(u?.outputTokens).toBe(450);
+    expect(u?.model).toBe('gpt-5.4');
+    expect(u?.cacheReadTokens).toBeUndefined();
+    expect(u?.cacheCreationTokens).toBeUndefined();
+  });
 });

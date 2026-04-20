@@ -33,6 +33,13 @@ export function getWindowForModel(
  * completed turn. Cached (read) and cache-creation tokens count toward
  * the live context; output tokens do not (they leave the window as
  * they're generated).
+ *
+ * Invariant: callers must emit `cacheReadTokens` / `cacheCreationTokens`
+ * only when they are **disjoint** from `inputTokens` (Anthropic's
+ * contract). Codex's `cached_input_tokens` is a *breakdown* of
+ * `input_tokens`, not a sibling — so the Codex adapter deliberately
+ * omits those fields here to avoid double-counting. See
+ * `container/agent-runner/src/codex-usage.ts` and promptfoo#7546.
  */
 export function totalContextTokens(u: SessionUsageSnapshot): number {
   return (

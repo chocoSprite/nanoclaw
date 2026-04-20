@@ -22,6 +22,8 @@ import type {
   RunQueryOptions,
   RunQueryResult,
 } from './sdk-adapter.js';
+import { codexUsageDelta } from './codex-usage.js';
+import type { CodexUsageBaseline } from './codex-usage.js';
 
 export class CodexAdapter implements SdkAdapter {
   private codex!: Codex;
@@ -38,6 +40,13 @@ export class CodexAdapter implements SdkAdapter {
   };
   private assistantName?: string;
   private containerInput!: ContainerInput;
+  /**
+   * Previous cumulative usage observed for the current thread. Codex's
+   * `turn.completed.usage` is cumulative across the thread (see
+   * {@link ./codex-usage.ts}), so we hold this to compute per-turn deltas.
+   * Reset to `null` on new-thread creation and resume-fallback.
+   */
+  private lastUsage: CodexUsageBaseline | null = null;
 
   init(options: SdkInitOptions): void {
     this.assistantName = options.containerInput.assistantName;
@@ -86,6 +95,11 @@ export class CodexAdapter implements SdkAdapter {
       try {
         this.thread = this.codex.resumeThread(sessionId, this.threadOpts);
         log(`Resuming thread: ${sessionId}`);
+        // Resume edge: the CLI's internal cumulative counter may already
+        // be non-zero when we attach. Baseline starts at null, so the
+        // first delta on resume equals the at-resume cumulative — one
+        // inflated turn, then self-corrects.
+        this.lastUsage = null;
         return this.thread;
       } catch (err) {
         log(
@@ -95,6 +109,7 @@ export class CodexAdapter implements SdkAdapter {
     }
     this.thread = this.codex.startThread(this.threadOpts);
     log('Starting new thread');
+    this.lastUsage = null;
     return this.thread;
   }
 
@@ -203,19 +218,27 @@ export class CodexAdapter implements SdkAdapter {
               }
             ).usage;
             if (usage) {
+              // Codex emits cumulative thread totals — convert to per-turn
+              // delta so the gauge matches Claude's per-turn `msg.usage`.
+              // `cached_input_tokens` is a breakdown of `input_tokens`
+              // (not an additive sibling), so we deliberately do NOT
+              // emit `cacheReadTokens` — the web-side totalContextTokens
+              // sums input+cacheRead+cacheCreation (Anthropic contract),
+              // and adding Codex's cache subset would double-count.
+              // See: ./codex-usage.ts, codex#17539, promptfoo#7546.
+              const { deltaInput, deltaOutput, nextBaseline } =
+                codexUsageDelta(usage, this.lastUsage);
+              this.lastUsage = nextBaseline;
               const payload: {
                 kind: 'session.usage';
                 inputTokens: number;
                 outputTokens: number;
-                cacheReadTokens?: number;
                 model?: string;
               } = {
                 kind: 'session.usage',
-                inputTokens: usage.input_tokens ?? 0,
-                outputTokens: usage.output_tokens ?? 0,
+                inputTokens: deltaInput,
+                outputTokens: deltaOutput,
               };
-              if (usage.cached_input_tokens !== undefined)
-                payload.cacheReadTokens = usage.cached_input_tokens;
               if (this.containerInput.model)
                 payload.model = this.containerInput.model;
               emit(payload);

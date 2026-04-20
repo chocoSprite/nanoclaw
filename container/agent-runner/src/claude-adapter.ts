@@ -289,6 +289,12 @@ export class ClaudeAdapter implements SdkAdapter {
           // succeeded or errored, and the dashboard gauge should reflect
           // that before we throw. /compact has its own runCompact() path
           // and does not go through this branch.
+          //
+          // Note: Anthropic's `msg.usage` is per-turn (input/output/cache
+          // fields are disjoint subsets) so no delta arithmetic is needed
+          // here. Codex's `turn.completed.usage` is cumulative and
+          // requires `./codex-usage.ts` — see the adapter comment there
+          // for the asymmetry rationale.
           const usage = res.usage as
             | {
                 input_tokens?: number;
