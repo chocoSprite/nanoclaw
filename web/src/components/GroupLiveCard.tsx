@@ -3,6 +3,7 @@ import { Bot, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader } from './ui/card';
 import { Badge } from './ui/badge';
 import { ToolCallHistory } from './ToolCallHistory';
+import { TokenGauge } from './TokenGauge';
 import { cn } from '../lib/utils';
 import type { LiveGroupState } from '../contracts';
 
@@ -101,6 +102,9 @@ export function GroupLiveCard({ group }: Props) {
             tools={group.recentTools}
             pulseFirst={group.containerStatus === 'running'}
           />
+        )}
+        {group.lastUsage && (
+          <TokenGauge usage={group.lastUsage} sdk={group.sdk} />
         )}
       </CardContent>
     </Card>

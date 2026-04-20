@@ -49,6 +49,20 @@ export interface ToolResultEvent extends BaseEvent {
   isError: boolean;
 }
 
+/**
+ * Emitted by each adapter at the end of a turn with the token counts
+ * reported by the underlying SDK. Claude sources `SDKResultSuccess.usage`;
+ * Codex sources `turn.completed.usage`. Fields normalized to camelCase.
+ */
+export interface SessionUsageEvent extends BaseEvent {
+  kind: 'session.usage';
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  model?: string;
+}
+
 export interface AutomationTaskRunStartedEvent extends BaseEvent {
   kind: 'automation.task.run_started';
   taskId: string;
@@ -69,6 +83,7 @@ export type AgentEventV1 =
   | ContainerExitedEvent
   | ToolUseEvent
   | ToolResultEvent
+  | SessionUsageEvent
   | AutomationTaskRunStartedEvent
   | AutomationTaskRunCompletedEvent;
 

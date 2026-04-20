@@ -123,3 +123,51 @@ describe('LiveStateCache — recentTools & sessionId', () => {
     expect(entry.isError).toBeUndefined();
   });
 });
+
+describe('LiveStateCache — session.usage', () => {
+  it('session.usage populates lastUsage with all fields', () => {
+    const cache = new LiveStateCache();
+    cache.apply(
+      ev('session.usage', {
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheReadTokens: 500,
+        cacheCreationTokens: 50,
+        model: 'claude-sonnet-4-6',
+      }),
+    );
+    expect(cache.get(JID)?.lastUsage).toEqual({
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheReadTokens: 500,
+      cacheCreationTokens: 50,
+      model: 'claude-sonnet-4-6',
+    });
+  });
+
+  it('session.usage with optional fields omitted keeps them undefined', () => {
+    const cache = new LiveStateCache();
+    cache.apply(ev('session.usage', { inputTokens: 500, outputTokens: 100 }));
+    const u = cache.get(JID)?.lastUsage;
+    expect(u?.inputTokens).toBe(500);
+    expect(u?.outputTokens).toBe(100);
+    expect(u?.cacheReadTokens).toBeUndefined();
+    expect(u?.cacheCreationTokens).toBeUndefined();
+    expect(u?.model).toBeUndefined();
+  });
+
+  it('status.started clears lastUsage so the gauge restarts from zero', () => {
+    const cache = new LiveStateCache();
+    cache.apply(ev('session.usage', { inputTokens: 900, outputTokens: 50 }));
+    expect(cache.get(JID)?.lastUsage).not.toBeNull();
+    cache.apply(ev('status.started', { sdk: 'claude', sessionId: 'sess_x' }));
+    expect(cache.get(JID)?.lastUsage).toBeNull();
+  });
+
+  it('container.exited preserves lastUsage until next session', () => {
+    const cache = new LiveStateCache();
+    cache.apply(ev('session.usage', { inputTokens: 400, outputTokens: 80 }));
+    cache.apply(ev('container.exited', { exitCode: 0 }));
+    expect(cache.get(JID)?.lastUsage?.inputTokens).toBe(400);
+  });
+});

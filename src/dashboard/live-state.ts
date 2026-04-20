@@ -1,5 +1,10 @@
 import type { AgentEventBus, AgentEventV1 } from '../agent-events.js';
-import type { ContainerStatus, RecentToolCall, SdkKind } from './events.js';
+import type {
+  ContainerStatus,
+  RecentToolCall,
+  SdkKind,
+  SessionUsageSnapshot,
+} from './events.js';
 
 /**
  * Per-jid live state derived from the event stream. Drives the "currentTool"
@@ -27,6 +32,7 @@ export interface LiveJidState {
   sdk: SdkKind | null;
   recentTools: RecentToolCall[];
   sessionId: string | null;
+  lastUsage: SessionUsageSnapshot | null;
 }
 
 function emptyState(): LiveJidState {
@@ -37,6 +43,7 @@ function emptyState(): LiveJidState {
     sdk: null,
     recentTools: [],
     sessionId: null,
+    lastUsage: null,
   };
 }
 
@@ -65,8 +72,10 @@ export class LiveStateCache {
         s.sdk = ev.sdk;
         s.sessionId = ev.sessionId ?? null;
         // New session boundary — clear the history so the card stops showing
-        // the previous turn's tools.
+        // the previous turn's tools, and drop lastUsage so the gauge starts
+        // from zero rather than carrying last session's numbers.
         s.recentTools = [];
+        s.lastUsage = null;
         break;
       case 'status.ended':
         s.currentTool = null;
@@ -107,6 +116,19 @@ export class LiveStateCache {
         if (idx < 0) idx = 0; // newest entry fallback
         next[idx] = { ...next[idx], isError: ev.isError };
         s.recentTools = next;
+        break;
+      }
+      case 'session.usage': {
+        const snap: SessionUsageSnapshot = {
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+        };
+        if (ev.cacheReadTokens !== undefined)
+          snap.cacheReadTokens = ev.cacheReadTokens;
+        if (ev.cacheCreationTokens !== undefined)
+          snap.cacheCreationTokens = ev.cacheCreationTokens;
+        if (ev.model !== undefined) snap.model = ev.model;
+        s.lastUsage = snap;
         break;
       }
     }

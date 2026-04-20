@@ -43,6 +43,7 @@ export class GroupsService {
         pendingSinceTs: q?.pendingSinceTs ?? null,
         recentTools: live?.recentTools ?? [],
         sessionId: live?.sessionId ?? null,
+        lastUsage: live?.lastUsage ?? null,
       });
     }
     return out;

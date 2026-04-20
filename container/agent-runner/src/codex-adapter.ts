@@ -184,6 +184,37 @@ export class CodexAdapter implements SdkAdapter {
             break;
           }
 
+          case 'turn.completed': {
+            const usage = (
+              event as {
+                usage?: {
+                  input_tokens?: number;
+                  cached_input_tokens?: number;
+                  output_tokens?: number;
+                };
+              }
+            ).usage;
+            if (usage) {
+              const payload: {
+                kind: 'session.usage';
+                inputTokens: number;
+                outputTokens: number;
+                cacheReadTokens?: number;
+                model?: string;
+              } = {
+                kind: 'session.usage',
+                inputTokens: usage.input_tokens ?? 0,
+                outputTokens: usage.output_tokens ?? 0,
+              };
+              if (usage.cached_input_tokens !== undefined)
+                payload.cacheReadTokens = usage.cached_input_tokens;
+              if (this.containerInput.model)
+                payload.model = this.containerInput.model;
+              emit(payload);
+            }
+            break;
+          }
+
           case 'turn.failed': {
             const error = (event as { error: { message: string } }).error;
             log(`Turn failed: ${error.message}`);

@@ -16,6 +16,7 @@ export {
   type BaseEvent,
   type ContainerExitedEvent,
   type ContainerSpawnedEvent,
+  type SessionUsageEvent,
   type StatusEndedEvent,
   type StatusStartedEvent,
   type ToolResultEvent,
@@ -37,6 +38,20 @@ export interface RecentToolCall {
   toolUseId?: string;
 }
 
+/**
+ * Snapshot of the most recently reported token usage for a group. Populated
+ * from `session.usage` events — which the adapters emit at result / turn
+ * completion, not incrementally. Reset to null on `status.started` so a new
+ * session starts from zero and the gauge doesn't lie.
+ */
+export interface SessionUsageSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  model?: string;
+}
+
 export interface LiveGroupState {
   jid: string;
   groupFolder: string;
@@ -51,6 +66,8 @@ export interface LiveGroupState {
   recentTools: RecentToolCall[];
   /** Session id carried on the most recent `status.started` for this group. */
   sessionId: string | null;
+  /** Last `session.usage` event payload for this group; null before any turn completes. */
+  lastUsage: SessionUsageSnapshot | null;
 }
 
 export interface RegisteredGroupLite {

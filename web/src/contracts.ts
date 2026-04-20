@@ -17,6 +17,14 @@ export interface RecentToolCall {
   toolUseId?: string;
 }
 
+export interface SessionUsageSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  model?: string;
+}
+
 export interface LiveGroupState {
   jid: string;
   groupFolder: string;
@@ -29,6 +37,7 @@ export interface LiveGroupState {
   pendingSinceTs: number | null;
   recentTools: RecentToolCall[];
   sessionId: string | null;
+  lastUsage: SessionUsageSnapshot | null;
 }
 
 export interface RegisteredGroupLite {
@@ -76,6 +85,14 @@ export interface ToolResultEvent extends BaseEvent {
   toolUseId?: string;
   isError: boolean;
 }
+export interface SessionUsageEvent extends BaseEvent {
+  kind: 'session.usage';
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+  model?: string;
+}
 export interface AutomationTaskRunStartedEvent extends BaseEvent {
   kind: 'automation.task.run_started';
   taskId: string;
@@ -95,6 +112,7 @@ export type AgentEventV1 =
   | ContainerExitedEvent
   | ToolUseEvent
   | ToolResultEvent
+  | SessionUsageEvent
   | AutomationTaskRunStartedEvent
   | AutomationTaskRunCompletedEvent;
 

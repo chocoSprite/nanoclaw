@@ -217,7 +217,7 @@ describe('GroupsService', () => {
     expect(svc.listLive()[0].pendingSinceTs).toBe(ts);
   });
 
-  it('listLive defaults recentTools=[] and sessionId=null before any events', () => {
+  it('listLive defaults recentTools=[], sessionId=null, lastUsage=null before any events', () => {
     const state = new FakeStateReader([
       { jid: 'slack:A', group: group('alpha') },
     ]);
@@ -226,6 +226,37 @@ describe('GroupsService', () => {
     const [g] = svc.listLive();
     expect(g.recentTools).toEqual([]);
     expect(g.sessionId).toBeNull();
+    expect(g.lastUsage).toBeNull();
+  });
+
+  it('listLive surfaces lastUsage once session.usage fires', () => {
+    const state = new FakeStateReader([
+      { jid: 'slack:A', group: group('alpha') },
+    ]);
+    const queue = new FakeQueueReader([]);
+    const live = new LiveStateCache();
+    const bus = new InProcessEventBus();
+    live.subscribe(bus);
+    const svc = new GroupsService(state, queue, live);
+
+    bus.emit({
+      v: 1,
+      kind: 'session.usage',
+      ts: 'now',
+      groupFolder: 'alpha',
+      chatJid: 'slack:A',
+      inputTokens: 12_000,
+      outputTokens: 800,
+      cacheReadTokens: 4_000,
+      model: 'claude-sonnet-4-6',
+    });
+    const [g] = svc.listLive();
+    expect(g.lastUsage).toEqual({
+      inputTokens: 12_000,
+      outputTokens: 800,
+      cacheReadTokens: 4_000,
+      model: 'claude-sonnet-4-6',
+    });
   });
 
   it('listLive surfaces sessionId and recentTools from the live cache', () => {

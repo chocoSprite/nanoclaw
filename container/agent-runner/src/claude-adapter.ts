@@ -285,6 +285,39 @@ export class ClaudeAdapter implements SdkAdapter {
         if (msg.type === 'result') {
           resultCount++;
           const res = msg as Record<string, unknown>;
+          // Emit token usage first — tokens were spent whether the turn
+          // succeeded or errored, and the dashboard gauge should reflect
+          // that before we throw. /compact has its own runCompact() path
+          // and does not go through this branch.
+          const usage = res.usage as
+            | {
+                input_tokens?: number;
+                output_tokens?: number;
+                cache_creation_input_tokens?: number;
+                cache_read_input_tokens?: number;
+              }
+            | undefined;
+          if (usage) {
+            const payload: {
+              kind: 'session.usage';
+              inputTokens: number;
+              outputTokens: number;
+              cacheReadTokens?: number;
+              cacheCreationTokens?: number;
+              model?: string;
+            } = {
+              kind: 'session.usage',
+              inputTokens: usage.input_tokens ?? 0,
+              outputTokens: usage.output_tokens ?? 0,
+            };
+            if (usage.cache_read_input_tokens !== undefined)
+              payload.cacheReadTokens = usage.cache_read_input_tokens;
+            if (usage.cache_creation_input_tokens !== undefined)
+              payload.cacheCreationTokens = usage.cache_creation_input_tokens;
+            if (this.containerInput.model)
+              payload.model = this.containerInput.model;
+            emit(payload);
+          }
           const text = (
             (res.result as string) ||
             (msg.text as string) ||

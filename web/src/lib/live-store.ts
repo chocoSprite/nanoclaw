@@ -4,6 +4,7 @@ import type {
   LiveGroupState,
   RecentToolCall,
   RegisteredGroupLite,
+  SessionUsageSnapshot,
   WsMessage,
 } from '../contracts';
 import { WsClient, type WsStatus } from './ws-client';
@@ -52,12 +53,13 @@ class LiveStore {
   hydrate(groups: LiveGroupState[]): void {
     const next = new Map<string, LiveGroupState>();
     for (const g of groups) {
-      // Older server builds may omit recentTools/sessionId. Normalize defaults
-      // so the reducer and UI never see undefined.
+      // Older server builds may omit recentTools/sessionId/lastUsage.
+      // Normalize defaults so the reducer and UI never see undefined.
       next.set(g.jid, {
         ...g,
         recentTools: g.recentTools ?? [],
         sessionId: g.sessionId ?? null,
+        lastUsage: g.lastUsage ?? null,
       });
     }
     this.state = { ...this.state, groups: next };
@@ -109,6 +111,7 @@ class LiveStore {
         next.sdk = ev.sdk;
         next.sessionId = ev.sessionId ?? null;
         next.recentTools = [];
+        next.lastUsage = null;
         break;
       case 'status.ended':
         next.currentTool = null;
@@ -150,6 +153,19 @@ class LiveStore {
         if (idx < 0) idx = 0;
         arr[idx] = { ...arr[idx], isError: ev.isError };
         next.recentTools = arr;
+        break;
+      }
+      case 'session.usage': {
+        const snap: SessionUsageSnapshot = {
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+        };
+        if (ev.cacheReadTokens !== undefined)
+          snap.cacheReadTokens = ev.cacheReadTokens;
+        if (ev.cacheCreationTokens !== undefined)
+          snap.cacheCreationTokens = ev.cacheCreationTokens;
+        if (ev.model !== undefined) snap.model = ev.model;
+        next.lastUsage = snap;
         break;
       }
       default:

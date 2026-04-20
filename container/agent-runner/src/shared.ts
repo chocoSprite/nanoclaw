@@ -76,6 +76,14 @@ export type AgentEventV1Payload =
       kind: 'tool.result';
       toolUseId?: string;
       isError: boolean;
+    })
+  | (EventBase & {
+      kind: 'session.usage';
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheCreationTokens?: number;
+      model?: string;
     });
 
 type EventInput =
@@ -87,7 +95,15 @@ type EventInput =
       toolUseId?: string;
       inputSummary?: string;
     }
-  | { kind: 'tool.result'; toolUseId?: string; isError: boolean };
+  | { kind: 'tool.result'; toolUseId?: string; isError: boolean }
+  | {
+      kind: 'session.usage';
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheCreationTokens?: number;
+      model?: string;
+    };
 
 export type AgentEventEmitter = (ev: EventInput) => void;
 
