@@ -487,16 +487,16 @@ function humanizeCron(expr: string): string {
   ) {
     return `매일 ${pad2(h)}:${pad2(m)}`;
   }
-  // Weekly (M H * * D)
+  // Weekly (M H * * D) — D can be single, range (1-5), or list (1,3,5)
   if (
     /^\d+$/.test(m) &&
     /^\d+$/.test(h) &&
     dom === '*' &&
     mon === '*' &&
-    /^[0-6]$/.test(dow)
+    dow !== '*'
   ) {
-    const day = WEEKDAY_KO[Number.parseInt(dow, 10)];
-    return `매주 ${day}요일 ${pad2(h)}:${pad2(m)}`;
+    const dowLabel = formatDow(dow);
+    if (dowLabel) return `${dowLabel} ${pad2(h)}:${pad2(m)}`;
   }
   // Monthly (M H D * *)
   if (
@@ -510,6 +510,25 @@ function humanizeCron(expr: string): string {
   }
   // Fallback: raw
   return expr;
+}
+
+function formatDow(dow: string): string | null {
+  if (dow === '1-5') return '평일';
+  if (dow === '0,6' || dow === '6,0') return '주말';
+  if (/^[0-6]$/.test(dow)) {
+    return `매주 ${WEEKDAY_KO[Number.parseInt(dow, 10)]}요일`;
+  }
+  if (/^[0-6](?:,[0-6])+$/.test(dow)) {
+    const days = dow.split(',').map((d) => WEEKDAY_KO[Number.parseInt(d, 10)]);
+    return `매주 ${days.join('·')}요일`;
+  }
+  const range = /^([0-6])-([0-6])$/.exec(dow);
+  if (range) {
+    const a = Number.parseInt(range[1], 10);
+    const b = Number.parseInt(range[2], 10);
+    return `매주 ${WEEKDAY_KO[a]}~${WEEKDAY_KO[b]}요일`;
+  }
+  return null;
 }
 
 function pad2(s: string): string {
