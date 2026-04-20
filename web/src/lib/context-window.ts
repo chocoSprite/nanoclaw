@@ -1,21 +1,32 @@
 import type { SdkKind, SessionUsageSnapshot } from '../contracts';
 
 /**
- * Context window sizes in tokens, keyed by model id. Known Claude models map
+ * Context window sizes in tokens, keyed by model id. Known models map
  * explicitly; anything else falls back to a per-SDK default via
- * {@link getWindowForModel}. Keep in sync with `CLAUDE_MODELS` in contracts
- * when new models ship.
+ * {@link getWindowForModel}. Keep in sync with `CLAUDE_MODELS` and
+ * `CODEX_MODELS` in contracts when new models ship.
+ *
+ * Codex sources (OpenAI docs):
+ *   - gpt-5.4 standard: 272k (extended 1M requires opt-in via
+ *     `model_context_window` in `~/.codex/config.toml` — this map does
+ *     not auto-detect the extended setting; raise the entry manually
+ *     when the bot is configured for 1M).
+ *   - gpt-5 (GPT-5.1 era): 512k.
+ *   - o3: 200k.
  */
 const WINDOW_BY_MODEL: Record<string, number> = {
   'claude-opus-4-6': 200_000,
   'claude-sonnet-4-6': 200_000,
   'claude-haiku-4-5-20251001': 200_000,
+  'gpt-5.4': 272_000,
+  'gpt-5': 512_000,
+  o3: 200_000,
 };
 
 /** Fallback window for unknown models, picked by SDK. */
 export const DEFAULT_WINDOW = {
   claude: 200_000,
-  codex: 400_000,
+  codex: 272_000,
 } as const;
 
 export function getWindowForModel(
