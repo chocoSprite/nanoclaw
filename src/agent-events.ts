@@ -49,13 +49,28 @@ export interface ToolResultEvent extends BaseEvent {
   isError: boolean;
 }
 
+export interface AutomationTaskRunStartedEvent extends BaseEvent {
+  kind: 'automation.task.run_started';
+  taskId: string;
+}
+
+export interface AutomationTaskRunCompletedEvent extends BaseEvent {
+  kind: 'automation.task.run_completed';
+  taskId: string;
+  outcome: 'success' | 'error';
+  durationMs: number;
+  error?: string;
+}
+
 export type AgentEventV1 =
   | StatusStartedEvent
   | StatusEndedEvent
   | ContainerSpawnedEvent
   | ContainerExitedEvent
   | ToolUseEvent
-  | ToolResultEvent;
+  | ToolResultEvent
+  | AutomationTaskRunStartedEvent
+  | AutomationTaskRunCompletedEvent;
 
 export type AgentEventKind = AgentEventV1['kind'];
 

@@ -7,6 +7,7 @@ import { dashboardConfig } from './config.js';
 import { LiveStateCache } from './live-state.js';
 import { createRouter } from './router.js';
 import { createHttpServer } from './server.js';
+import { AutomationService } from './services/automation-service.js';
 import { GroupsService } from './services/groups-service.js';
 import { EventThrottle } from './throttle.js';
 import { WsHub } from './ws-hub.js';
@@ -14,6 +15,9 @@ import { WsHub } from './ws-hub.js';
 export interface DashboardDeps {
   agentEvents: AgentEventBus;
   queue: GroupQueue;
+  /** Called after any dashboard-originated task mutation. Host uses this to
+   *  rewrite per-group IPC task snapshots so containers see fresh state. */
+  onTasksChanged: () => void;
 }
 
 export interface DashboardHandle {
@@ -50,7 +54,14 @@ export async function startDashboard(
       liveCache,
     );
 
-    const router = createRouter({ groups: groupsService });
+    const automationService = new AutomationService({
+      onTasksChanged: deps.onTasksChanged,
+    });
+
+    const router = createRouter({
+      groups: groupsService,
+      automation: automationService,
+    });
     const { server } = createHttpServer({ router });
 
     const hub = new WsHub(server, groupsService);

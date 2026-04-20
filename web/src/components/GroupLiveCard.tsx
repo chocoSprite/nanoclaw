@@ -31,12 +31,7 @@ export function GroupLiveCard({ group }: Props) {
   const SdkIcon = group.sdk === 'claude' ? Sparkles : Bot;
 
   return (
-    <Card
-      className={cn(
-        'transition-opacity',
-        idle && 'opacity-60',
-      )}
-    >
+    <Card className={cn('transition-opacity', idle && 'opacity-60')}>
       <CardHeader className="gap-2 pb-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">

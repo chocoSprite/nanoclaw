@@ -1,8 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './layout/AppShell';
 import { LivePage } from './pages/LivePage';
+import { AutomationPage } from './pages/AutomationPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
-import { CalendarClock, Heart, ScrollText } from 'lucide-react';
+import { Heart, ScrollText } from 'lucide-react';
 
 export default function App() {
   return (
@@ -10,22 +11,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/live" replace />} />
         <Route path="/live" element={<LivePage />} />
-        <Route
-          path="/automation"
-          element={
-            <PlaceholderPage
-              icon={CalendarClock}
-              title="Automation"
-              description="예약된 스케줄 작업, cron, 실행 이력을 여기서 확인·조작합니다."
-              planned={[
-                '활성 cron 목록 + 다음 실행 시각',
-                '작업별 최근 실행 성공/실패 기록',
-                'Trigger Now · Pause · Resume · Delete',
-                'per-그룹 스케줄 필터',
-              ]}
-            />
-          }
-        />
+        <Route path="/automation" element={<AutomationPage />} />
         <Route
           path="/health"
           element={

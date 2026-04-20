@@ -360,6 +360,21 @@ export function logTaskRun(log: TaskRunLog): void {
   );
 }
 
+export function getTaskRunHistory(
+  taskId: string,
+  limit: number = 10,
+): TaskRunLog[] {
+  return db
+    .prepare(
+      `SELECT task_id, run_at, duration_ms, status, result, error
+       FROM task_run_logs
+       WHERE task_id = ?
+       ORDER BY run_at DESC
+       LIMIT ?`,
+    )
+    .all(taskId, limit) as TaskRunLog[];
+}
+
 // --- Router state accessors ---
 
 export function getRouterState(key: string): string | undefined {

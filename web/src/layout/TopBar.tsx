@@ -55,13 +55,15 @@ function WsBadge({ status }: { status: ReturnType<typeof useWsStatus> }) {
     closed: '재접속',
     error: '에러',
   };
-  const variant: Record<typeof status, 'success' | 'warning' | 'muted' | 'destructive'> =
-    {
-      connecting: 'warning',
-      open: 'success',
-      closed: 'muted',
-      error: 'destructive',
-    };
+  const variant: Record<
+    typeof status,
+    'success' | 'warning' | 'muted' | 'destructive'
+  > = {
+    connecting: 'warning',
+    open: 'success',
+    closed: 'muted',
+    error: 'destructive',
+  };
   return (
     <Badge variant={variant[status]}>
       <span

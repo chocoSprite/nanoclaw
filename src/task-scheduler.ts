@@ -2,6 +2,7 @@ import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
+import { agentEvents } from './agent-events.js';
 import { PAT_ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL } from './config.js';
 import {
   ContainerOutput,
@@ -21,6 +22,36 @@ import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import { computeNextRun } from './schedule-utils.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
+
+function emitRunStarted(task: ScheduledTask): void {
+  agentEvents.emit({
+    v: 1,
+    kind: 'automation.task.run_started',
+    ts: new Date().toISOString(),
+    groupFolder: task.group_folder,
+    chatJid: task.chat_jid,
+    taskId: task.id,
+  });
+}
+
+function emitRunCompleted(
+  task: ScheduledTask,
+  outcome: 'success' | 'error',
+  durationMs: number,
+  error?: string,
+): void {
+  agentEvents.emit({
+    v: 1,
+    kind: 'automation.task.run_completed',
+    ts: new Date().toISOString(),
+    groupFolder: task.group_folder,
+    chatJid: task.chat_jid,
+    taskId: task.id,
+    outcome,
+    durationMs,
+    error,
+  });
+}
 
 export { computeNextRun };
 
@@ -42,6 +73,7 @@ async function runTask(
   deps: SchedulerDependencies,
 ): Promise<void> {
   const startTime = Date.now();
+  emitRunStarted(task);
   let groupDir: string;
   try {
     groupDir = resolveGroupFolderPath(task.group_folder);
@@ -61,6 +93,7 @@ async function runTask(
       result: null,
       error,
     });
+    emitRunCompleted(task, 'error', Date.now() - startTime, error);
     return;
   }
   fs.mkdirSync(groupDir, { recursive: true });
@@ -80,14 +113,16 @@ async function runTask(
       { taskId: task.id, groupFolder: task.group_folder },
       'Group not found for task',
     );
+    const missingErr = `Group not found: ${task.group_folder}`;
     logTaskRun({
       task_id: task.id,
       run_at: new Date().toISOString(),
       duration_ms: Date.now() - startTime,
       status: 'error',
       result: null,
-      error: `Group not found: ${task.group_folder}`,
+      error: missingErr,
     });
+    emitRunCompleted(task, 'error', Date.now() - startTime, missingErr);
     return;
   }
 
@@ -184,6 +219,13 @@ async function runTask(
     result,
     error,
   });
+
+  emitRunCompleted(
+    task,
+    error ? 'error' : 'success',
+    durationMs,
+    error ?? undefined,
+  );
 
   const nextRun = computeNextRun(task);
   const resultSummary = error

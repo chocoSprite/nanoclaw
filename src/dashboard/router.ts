@@ -6,10 +6,12 @@ import {
 } from 'express';
 import { runInIsolation } from './isolation.js';
 import { logger } from '../logger.js';
+import type { AutomationService } from './services/automation-service.js';
 import type { GroupsService } from './services/groups-service.js';
 
 export interface RouterDeps {
   groups: GroupsService;
+  automation: AutomationService;
 }
 
 export function createRouter(deps: RouterDeps): Router {
@@ -25,6 +27,78 @@ export function createRouter(deps: RouterDeps): Router {
       'GET /api/groups/live',
     );
     res.json({ v: 1, groups: out ?? [] });
+  });
+
+  // --- Automation ---
+
+  r.get('/automation/tasks', (_req, res) => {
+    const out = runInIsolation(
+      () => deps.automation.listTasks(),
+      'GET /api/automation/tasks',
+    );
+    res.json({ v: 1, tasks: out ?? [] });
+  });
+
+  r.get('/automation/tasks/:id/runs', (req, res) => {
+    const id = req.params.id;
+    const rawLimit = Number.parseInt(String(req.query.limit ?? '10'), 10);
+    const limit =
+      Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 100
+        ? rawLimit
+        : 10;
+    const out = runInIsolation(
+      () => deps.automation.getTaskRuns(id, limit),
+      'GET /api/automation/tasks/:id/runs',
+    );
+    res.json({ v: 1, runs: out ?? [] });
+  });
+
+  r.post('/automation/tasks/:id/pause', (req, res) => {
+    const task = runInIsolation(
+      () => deps.automation.pauseTask(req.params.id),
+      'POST /api/automation/tasks/:id/pause',
+    );
+    if (!task) {
+      res.status(404).json({ v: 1, ok: false, error: 'not_found' });
+      return;
+    }
+    res.json({ v: 1, ok: true, task });
+  });
+
+  r.post('/automation/tasks/:id/resume', (req, res) => {
+    const task = runInIsolation(
+      () => deps.automation.resumeTask(req.params.id),
+      'POST /api/automation/tasks/:id/resume',
+    );
+    if (!task) {
+      res.status(404).json({ v: 1, ok: false, error: 'not_found' });
+      return;
+    }
+    res.json({ v: 1, ok: true, task });
+  });
+
+  r.post('/automation/tasks/:id/trigger', (req, res) => {
+    const task = runInIsolation(
+      () => deps.automation.triggerNow(req.params.id),
+      'POST /api/automation/tasks/:id/trigger',
+    );
+    if (!task) {
+      res.status(404).json({ v: 1, ok: false, error: 'not_found' });
+      return;
+    }
+    res.json({ v: 1, ok: true, task });
+  });
+
+  r.delete('/automation/tasks/:id', (req, res) => {
+    const deleted = runInIsolation(
+      () => deps.automation.deleteTask(req.params.id),
+      'DELETE /api/automation/tasks/:id',
+    );
+    if (!deleted) {
+      res.status(404).json({ v: 1, ok: false, error: 'not_found' });
+      return;
+    }
+    res.json({ v: 1, ok: true });
   });
 
   // Layer C: final error handler so a throwing handler cannot crash the host.

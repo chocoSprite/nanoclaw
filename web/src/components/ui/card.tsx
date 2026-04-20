@@ -69,10 +69,7 @@ export const CardFooter = forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      'flex items-center p-4 pt-0 sm:p-5 sm:pt-0',
-      className,
-    )}
+    className={cn('flex items-center p-4 pt-0 sm:p-5 sm:pt-0', className)}
     {...props}
   />
 ));

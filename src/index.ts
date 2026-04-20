@@ -639,7 +639,13 @@ async function main(): Promise<void> {
 
   // Embedded dashboard — flag-gated (DASHBOARD_ENABLED=1). Always non-fatal:
   // dashboard startup failure logs and the host continues.
-  startDashboard({ agentEvents, queue }).catch((err) => {
+  startDashboard({
+    agentEvents,
+    queue,
+    onTasksChanged: () => {
+      writeAllTasksSnapshots(state.registeredGroups, getAllTasks());
+    },
+  }).catch((err) => {
     logger.error({ err }, 'Dashboard startup rejected unexpectedly');
   });
 

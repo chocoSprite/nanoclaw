@@ -64,6 +64,17 @@ export interface ToolResultEvent extends BaseEvent {
   toolUseId?: string;
   isError: boolean;
 }
+export interface AutomationTaskRunStartedEvent extends BaseEvent {
+  kind: 'automation.task.run_started';
+  taskId: string;
+}
+export interface AutomationTaskRunCompletedEvent extends BaseEvent {
+  kind: 'automation.task.run_completed';
+  taskId: string;
+  outcome: 'success' | 'error';
+  durationMs: number;
+  error?: string;
+}
 
 export type AgentEventV1 =
   | StatusStartedEvent
@@ -71,7 +82,39 @@ export type AgentEventV1 =
   | ContainerSpawnedEvent
   | ContainerExitedEvent
   | ToolUseEvent
-  | ToolResultEvent;
+  | ToolResultEvent
+  | AutomationTaskRunStartedEvent
+  | AutomationTaskRunCompletedEvent;
+
+// --- Automation (REST DTOs) ---
+
+export type TaskStatus = 'active' | 'paused' | 'completed';
+export type TaskScheduleType = 'cron' | 'interval' | 'once';
+
+export interface ScheduledTaskDto {
+  id: string;
+  group_folder: string;
+  chat_jid: string;
+  prompt: string;
+  script?: string | null;
+  schedule_type: TaskScheduleType;
+  schedule_value: string;
+  context_mode: 'group' | 'isolated';
+  next_run: string | null;
+  last_run: string | null;
+  last_result: string | null;
+  status: TaskStatus;
+  created_at: string;
+}
+
+export interface TaskRunLogDto {
+  task_id: string;
+  run_at: string;
+  duration_ms: number;
+  status: 'success' | 'error';
+  result: string | null;
+  error: string | null;
+}
 
 export type WsMessage =
   | { type: 'snapshot'; groups: LiveGroupState[] }

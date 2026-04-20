@@ -11,6 +11,8 @@ export {
   type AgentEventBus,
   type AgentEventKind,
   type AgentEventV1,
+  type AutomationTaskRunCompletedEvent,
+  type AutomationTaskRunStartedEvent,
   type BaseEvent,
   type ContainerExitedEvent,
   type ContainerSpawnedEvent,
