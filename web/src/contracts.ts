@@ -235,14 +235,6 @@ export interface AdditionalMount {
   readonly?: boolean;
 }
 
-/** Mirror of `src/types.ts::MatConfig`. */
-export interface MatConfig {
-  enabled: boolean;
-  matJid: string;
-  matFolder: string;
-  maxRounds: number;
-}
-
 export interface GroupEditorView {
   jid: string;
   name: string;
@@ -256,7 +248,6 @@ export interface GroupEditorView {
   skills: SkillEntry[];
   session: GroupSessionInfo;
   additionalMounts: AdditionalMount[];
-  matConfig?: MatConfig;
   addedAt: string;
   requiresTrigger: boolean;
   containerTimeout?: number;

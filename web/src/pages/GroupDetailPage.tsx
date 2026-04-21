@@ -198,33 +198,6 @@ function GroupDetail({ group }: { group: GroupEditorView }) {
             )}
           </Section>
 
-          {/* Pairing (mat) — only when configured */}
-          {group.matConfig && (
-            <Section title="페어링" hint="pat → mat 자동 사이클">
-              <KV label="상태">
-                <Badge
-                  variant={group.matConfig.enabled ? 'success' : 'muted'}
-                  className="text-[10px]"
-                >
-                  {group.matConfig.enabled ? 'enabled' : 'disabled'}
-                </Badge>
-              </KV>
-              <KV label="mat 폴더">
-                <code className="break-all font-mono text-[11px]">
-                  {group.matConfig.matFolder}
-                </code>
-              </KV>
-              <KV label="mat JID">
-                <code className="break-all font-mono text-[11px]">
-                  {group.matConfig.matJid}
-                </code>
-              </KV>
-              <KV label="최대 라운드">
-                <span className="text-xs">{group.matConfig.maxRounds}</span>
-              </KV>
-            </Section>
-          )}
-
           {/* Skills */}
           <Section
             title={`스킬 · ${group.skills.length}개`}

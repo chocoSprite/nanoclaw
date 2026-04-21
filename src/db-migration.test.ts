@@ -202,8 +202,10 @@ describe('database migrations', () => {
       expect(colNames(msgCols)).toContain('is_bot_message');
       expect(colNames(msgCols)).toContain('thread_id');
       expect(colNames(regCols)).toContain('is_main');
-      expect(colNames(regCols)).toContain('review_config');
-      expect(colNames(regCols)).toContain('mat_config');
+      // review_config and mat_config were added by #5 and #11 respectively
+      // and dropped by #13 (columns now fully dead — see db-schema.ts).
+      expect(colNames(regCols)).not.toContain('review_config');
+      expect(colNames(regCols)).not.toContain('mat_config');
       expect(colNames(regCols)).toContain('sdk');
       expect(colNames(regCols)).toContain('model');
       expect(colNames(chatCols)).toContain('channel');
@@ -393,15 +395,13 @@ describe('database migrations', () => {
         ).n,
       ).toBe(0);
 
-      // slack-mat: should take their place
-      const regRow = db
-        .prepare(`SELECT jid, mat_config, review_config FROM registered_groups`)
-        .get() as { jid: string; mat_config: string; review_config: string };
+      // slack-mat: should take their place. (mat_config / review_config
+      // were dropped by migration #13 — their content is no longer
+      // inspectable here; this test focuses on the JID rename.)
+      const regRow = db.prepare(`SELECT jid FROM registered_groups`).get() as {
+        jid: string;
+      };
       expect(regRow.jid).toBe('slack-mat:C0APYRWQRFH');
-      // mat_config populated from review_config
-      expect(regRow.mat_config).toBe('{"enabled":true,"maxRounds":3}');
-      // review_config preserved (drop deferred to future migration)
-      expect(regRow.review_config).toBe('{"enabled":true,"maxRounds":3}');
 
       const routerValue = (
         db

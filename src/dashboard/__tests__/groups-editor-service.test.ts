@@ -110,10 +110,9 @@ describe('GroupsEditorService', () => {
     );
     expect(view.skills).toEqual([{ name: 'status', origin: 'global' }]);
     expect(view.session.sessionId).toBe('sess-123');
-    // Scope B fields — default shape when containerConfig / matConfig /
+    // Scope B fields — default shape when containerConfig /
     // requiresTrigger are absent on the underlying RegisteredGroup.
     expect(view.additionalMounts).toEqual([]);
-    expect(view.matConfig).toBeUndefined();
     expect(view.addedAt).toBe('2026-04-19');
     expect(view.requiresTrigger).toBe(true);
     expect(view.containerTimeout).toBeUndefined();
@@ -137,7 +136,7 @@ describe('GroupsEditorService', () => {
     expect(view.session.sessionId).toBeNull();
   });
 
-  it('forwards additionalMounts, matConfig, requiresTrigger, and timeout', () => {
+  it('forwards additionalMounts, requiresTrigger, and timeout', () => {
     const { svc } = makeSvc([
       {
         jid: 'slack:P',
@@ -154,12 +153,6 @@ describe('GroupsEditorService', () => {
               },
             ],
           },
-          matConfig: {
-            enabled: true,
-            matJid: 'slack-mat:M1',
-            matFolder: 'gamma_mat',
-            maxRounds: 3,
-          },
         }),
       },
     ]);
@@ -173,12 +166,6 @@ describe('GroupsEditorService', () => {
       hostPath: '/Users/me/work',
       containerPath: 'work',
       readonly: false,
-    });
-    expect(view.matConfig).toEqual({
-      enabled: true,
-      matJid: 'slack-mat:M1',
-      matFolder: 'gamma_mat',
-      maxRounds: 3,
     });
     expect(view.requiresTrigger).toBe(false);
     expect(view.containerTimeout).toBe(600_000);

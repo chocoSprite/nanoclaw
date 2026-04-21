@@ -40,13 +40,6 @@ export interface ContainerConfig {
   timeout?: number; // Default: 300000 (5 minutes)
 }
 
-export interface MatConfig {
-  enabled: boolean;
-  matJid: string; // JID of the mat bot channel (e.g. "slack-mat:C123...")
-  matFolder: string; // Group folder for the mat agent
-  maxRounds: number; // Max pat→mat cycles before forced stop (default: 3)
-}
-
 export interface RegisteredGroup {
   name: string;
   folder: string;
@@ -55,7 +48,6 @@ export interface RegisteredGroup {
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
-  matConfig?: MatConfig; // Auto pat→mat cycle config (multi-agent channels)
   sdk: 'codex' | 'claude'; // Which AI SDK to use (default: 'codex')
   model?: string; // Model override for Claude SDK (e.g. 'claude-opus-4-6')
 }

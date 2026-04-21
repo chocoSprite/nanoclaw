@@ -78,8 +78,6 @@ export function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1,
       is_main INTEGER DEFAULT 0,
-      review_config TEXT,
-      mat_config TEXT,
       sdk TEXT DEFAULT 'codex',
       model TEXT
     );
@@ -283,6 +281,31 @@ const migrations: Migration[] = [
         ON log_signals(kind, COALESCE(group_folder, ''))
         WHERE resolved_at IS NULL AND dismissed_at IS NULL;
     `);
+  },
+  // 13: drop dead legacy columns `review_config` and `mat_config`.
+  //     The pat/mat auto-cycle host logic was removed in 06d5796 (2026-04-02)
+  //     and replaced with channel-level bot-to-bot free conversation. The
+  //     columns were retained through #5 (review_config) and #11
+  //     (mat_config copied from review_config) with the intent documented
+  //     in #11's comment ("drop deferred to future migration"). All
+  //     production rows were NULL; no runtime code reads these columns
+  //     as of 2026-04-21.
+  //
+  //     DROP COLUMN requires SQLite 3.35+ — better-sqlite3 ships 3.49.x.
+  //     Wrapped in try/catch so the migration is idempotent: re-running
+  //     against a DB where the column is already absent is a no-op
+  //     rather than a crash.
+  (db) => {
+    try {
+      db.exec(`ALTER TABLE registered_groups DROP COLUMN review_config`);
+    } catch {
+      /* column already dropped or was never added in this install */
+    }
+    try {
+      db.exec(`ALTER TABLE registered_groups DROP COLUMN mat_config`);
+    } catch {
+      /* column already dropped or was never added in this install */
+    }
   },
 ];
 

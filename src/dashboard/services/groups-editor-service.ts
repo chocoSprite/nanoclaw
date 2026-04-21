@@ -9,11 +9,7 @@
 
 import path from 'node:path';
 
-import type {
-  AdditionalMount,
-  MatConfig,
-  RegisteredGroup,
-} from '../../types.js';
+import type { AdditionalMount, RegisteredGroup } from '../../types.js';
 import type { StateReader } from '../adapters/state-adapter.js';
 import type { SkillScanner, SkillEntry } from './skill-scanner.js';
 import type { SdkKind } from '../events.js';
@@ -39,8 +35,6 @@ export interface GroupEditorView {
   session: GroupSessionInfo;
   /** User-configured extra host-path mounts. Empty when none declared. */
   additionalMounts: AdditionalMount[];
-  /** pat→mat pairing config (multi-agent channels). Undefined for solo/main groups. */
-  matConfig?: MatConfig;
   /** When the group was registered (ISO timestamp). */
   addedAt: string;
   /** Whether incoming messages need to match the trigger pattern. */
@@ -114,7 +108,6 @@ export class GroupsEditorService {
           sessionId: sessions[group.folder] ?? null,
         },
         additionalMounts: group.containerConfig?.additionalMounts ?? [],
-        matConfig: group.matConfig,
         addedAt: group.added_at,
         requiresTrigger: group.requiresTrigger ?? true,
         containerTimeout: group.containerConfig?.timeout,
@@ -167,10 +160,9 @@ export class GroupsEditorService {
  *   - folder ends with '_pat' → 'pat' (pat-lane bot)
  *   - otherwise → 'solo' (legacy groups predating the suffix convention)
  *
- * Structural signals (matConfig / JID prefix) were tempting, but the
- * user-facing convention is the folder suffix — it's explicit, stable
- * across DB/memory pairing changes, and already codified in
- * `feedback_group_naming_convention.md`.
+ * Structural signals (JID prefix) were tempting, but the user-facing
+ * convention is the folder suffix — it's explicit, stable, and already
+ * codified in `feedback_group_naming_convention.md`.
  */
 export function deriveBotRole(folder: string, isMain: boolean): BotRole {
   if (isMain) return 'main';

@@ -9,7 +9,6 @@ import {
   getLastBotMessageTimestamp,
   getMessagesSince,
   getNewMessages,
-  getRegisteredGroup,
   getTaskById,
   setRegisteredGroup,
   storeChatMetadata,
@@ -573,50 +572,5 @@ describe('registered group isMain', () => {
     const group = groups['group@g.us'];
     expect(group).toBeDefined();
     expect(group.isMain).toBeUndefined();
-  });
-});
-
-// --- RegisteredGroup matConfig round-trip (regression: getRegisteredGroup used
-// to drop mat_config, so a read-modify-write chain through setRegisteredGroup
-// would silently clobber mat_config on the row). ---
-
-describe('registered group matConfig round-trip', () => {
-  it('persists matConfig through setRegisteredGroup → getRegisteredGroup', () => {
-    setRegisteredGroup('pair@g.us', {
-      name: 'Pair Chat',
-      folder: 'slack_pair_pat',
-      trigger: '@패트',
-      added_at: '2024-01-01T00:00:00.000Z',
-      sdk: 'claude',
-      matConfig: {
-        enabled: true,
-        matJid: 'slack-mat:C123',
-        matFolder: 'slack_pair_mat',
-        maxRounds: 3,
-      },
-    });
-
-    const group = getRegisteredGroup('pair@g.us');
-    expect(group).toBeDefined();
-    expect(group?.matConfig).toEqual({
-      enabled: true,
-      matJid: 'slack-mat:C123',
-      matFolder: 'slack_pair_mat',
-      maxRounds: 3,
-    });
-  });
-
-  it('returns matConfig=undefined when the column is null', () => {
-    setRegisteredGroup('solo@g.us', {
-      name: 'Solo Chat',
-      folder: 'slack_solo',
-      trigger: '@패트',
-      added_at: '2024-01-01T00:00:00.000Z',
-      sdk: 'claude',
-    });
-
-    const group = getRegisteredGroup('solo@g.us');
-    expect(group).toBeDefined();
-    expect(group?.matConfig).toBeUndefined();
   });
 });
