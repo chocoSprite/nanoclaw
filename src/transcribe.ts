@@ -30,10 +30,11 @@ const SCRIPT_PATH = path.resolve(
   'transcribe-whisperx.py',
 );
 const HF_HOME = path.join(DATA_DIR, 'hf-cache');
-// Bumped from 15m → 60m: WhisperX on multi-speaker meetings (pyannote 3.1 with
-// 5+ speakers) can take ~35m for a 12-min file on M4 Pro CPU. 60m covers most
-// meeting-length audio up to ~30 min real time.
-const TRANSCRIBE_TIMEOUT = 60 * 60 * 1000; // 60 minutes
+// Bumped from 60m → 120m (2026-04-21): 52-min audio (F0AU4K2KYG6) timed out at
+// 60m boundary. Multi-speaker pyannote 3.1 diarization on CPU scales super-
+// linearly with duration — ~25m for a 30-min file is typical, so 60-min audio
+// can realistically need 90m+. 120m covers up to ~60-min real time.
+const TRANSCRIBE_TIMEOUT = 120 * 60 * 1000; // 120 minutes
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
 // Compute type: float32 on M4 Pro CPU is comparable or faster than int8
@@ -342,6 +343,15 @@ export async function transcribeAudio(
           ...process.env,
           HF_TOKEN: hfToken,
           HF_HOME,
+          // torchcodec 0.7.x (whisperx's pinned range) ships against FFmpeg
+          // 4-7 libs — point its @rpath loader at keg-only ffmpeg@7 so the
+          // system's ffmpeg 8 (libavutil.60) doesn't mismatch.
+          DYLD_FALLBACK_LIBRARY_PATH: [
+            '/opt/homebrew/opt/ffmpeg@7/lib',
+            process.env.DYLD_FALLBACK_LIBRARY_PATH,
+          ]
+            .filter(Boolean)
+            .join(':'),
         },
       });
 
