@@ -149,7 +149,6 @@ export function getMessageById(id: string, chatJid: string): NewMessage | null {
 export function getNewMessages(
   jids: string[],
   lastTimestamp: string,
-  botPrefix: string,
   limit: number = 200,
 ): { messages: NewMessage[]; newTimestamp: string } {
   if (jids.length === 0) return { messages: [], newTimestamp: lastTimestamp };
@@ -157,13 +156,12 @@ export function getNewMessages(
   const placeholders = jids.map(() => '?').join(',');
   // Filter own bot messages using is_from_me (not is_bot_message, which
   // includes peer bots whose messages should be processed).
-  // Content prefix check is a backstop for pre-migration messages.
   const sql = `
     SELECT * FROM (
       SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
       FROM messages
       WHERE timestamp > ? AND chat_jid IN (${placeholders})
-        AND is_from_me = 0 AND content NOT LIKE ?
+        AND is_from_me = 0
         AND content != '' AND content IS NOT NULL
       ORDER BY timestamp DESC
       LIMIT ?
@@ -172,7 +170,7 @@ export function getNewMessages(
 
   const rows = db
     .prepare(sql)
-    .all(lastTimestamp, ...jids, `${botPrefix}:%`, limit) as NewMessage[];
+    .all(lastTimestamp, ...jids, limit) as NewMessage[];
 
   let newTimestamp = lastTimestamp;
   for (const row of rows) {
@@ -185,7 +183,6 @@ export function getNewMessages(
 export function getMessagesSince(
   chatJid: string,
   sinceTimestamp: string,
-  botPrefix: string,
   limit: number = 200,
 ): NewMessage[] {
   // Filter own bot messages using is_from_me (not is_bot_message, which
@@ -195,27 +192,24 @@ export function getMessagesSince(
       SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
       FROM messages
       WHERE chat_jid = ? AND timestamp > ?
-        AND is_from_me = 0 AND content NOT LIKE ?
+        AND is_from_me = 0
         AND content != '' AND content IS NOT NULL
       ORDER BY timestamp DESC
       LIMIT ?
     ) ORDER BY timestamp
   `;
-  return db
-    .prepare(sql)
-    .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[];
+  return db.prepare(sql).all(chatJid, sinceTimestamp, limit) as NewMessage[];
 }
 
 export function getLastBotMessageTimestamp(
   chatJid: string,
-  botPrefix: string,
 ): string | undefined {
   const row = db
     .prepare(
       `SELECT MAX(timestamp) as ts FROM messages
-       WHERE chat_jid = ? AND (is_from_me = 1 OR content LIKE ?)`,
+       WHERE chat_jid = ? AND is_from_me = 1`,
     )
-    .get(chatJid, `${botPrefix}:%`) as { ts: string | null } | undefined;
+    .get(chatJid) as { ts: string | null } | undefined;
   return row?.ts ?? undefined;
 }
 

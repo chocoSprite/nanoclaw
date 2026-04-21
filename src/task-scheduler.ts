@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { agentEvents } from './agent-events.js';
-import { PAT_ASSISTANT_NAME, SCHEDULER_POLL_INTERVAL } from './config.js';
+import { getGroupBotName, SCHEDULER_POLL_INTERVAL } from './config.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -166,7 +166,7 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
-        assistantName: PAT_ASSISTANT_NAME,
+        assistantName: getGroupBotName(task.chat_jid),
         script: task.script || undefined,
         sdk: group.sdk,
         model: resolveModel(group.sdk, group.model),
