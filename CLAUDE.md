@@ -1,6 +1,6 @@
 # NanoClaw
 
-Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/SPEC.md](docs/SPEC.md) for architecture details.
+Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/SPEC.md](docs/SPEC.md) for architecture details. Subproject design doc: [docs/DASHBOARD_DESIGN.md](docs/DASHBOARD_DESIGN.md) (web/ rebuild 서사).
 
 ## Quick Context
 
@@ -25,6 +25,14 @@ Single Node.js process with skill-based channel system. Channels (Slack, Gmail) 
 ## Secrets / Credentials / Proxy (OneCLI)
 
 API keys, secret keys, OAuth tokens, and auth credentials are managed by the OneCLI gateway — which handles secret injection into containers at request time, so no keys or tokens are ever passed to containers directly. Run `onecli --help`.
+
+## Channels & Groups
+
+- Folder convention: pat-bot groups → `_pat` suffix, mat-bot groups → `_mat` suffix. `slack_main` is the only exception. Old `_dev` / `_review` suffixes are retired (2026-04-15 migration).
+- Env vars follow the same identity-based naming: `SLACK_PAT_*` / `SLACK_MAT_*`, never role-based (`SLACK_REVIEW_*` is dead).
+- Channel registry truth lives in `store/messages.db` (`registered_groups`). Docs drift — query the DB when verifying current state.
+- JID prefixes: `slack:` (pat lane) / `slack-mat:` (mat lane) — migration 11 renamed `slack-review:` → `slack-mat:`.
+- Renaming a group folder: see [docs/GROUP_RENAME.md](docs/GROUP_RENAME.md) for the 7-point DB/filesystem/OneCLI sync checklist.
 
 ## Skills
 
@@ -74,6 +82,12 @@ npx vitest run                # 전체 테스트 통과 필수
 - `npm run format:fix` 결과 없음 = 좋음 (변경점 없음)
 - `eslint` 에 새 error/warning 나오면 그 파일 수정 → 룰 완화 금지 (룰 바꾸려면 별도 논의)
 - 테스트 실패하면 코드 고치거나 테스트 반영 — skip/xdescribe 로 우회 금지
+
+### Gotcha: direct `registered_groups` UPDATE needs a restart
+
+`state.registeredGroups` 는 startup 시 DB 를 **한 번만** 읽어 in-memory Map 에 로딩. 이후 `sqlite3 ... UPDATE` 로 `container_config` / `sdk` / `trigger_pattern` 등을 직접 고치면 다음 컨테이너 spawn 도 **여전히 old 설정**으로 돈다. 반드시 `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (또는 `systemctl --user restart nanoclaw`) 로 재시작.
+
+**예외**: 대시보드 `PATCH /api/groups/:jid` 경로(모델 전환, 세션 리셋)는 `reloadGroupState()` 를 호출하므로 재시작 없이 hot reload. 새 컬럼을 대시보드 편집기에 추가할 때는 `src/dashboard/services/groups-editor-service.ts::patchModel` 패턴을 그대로 따라가면 됨.
 
 Service management:
 ```bash
