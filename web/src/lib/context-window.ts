@@ -33,8 +33,15 @@ export function getWindowForModel(
   model: string | undefined,
   sdk: SdkKind,
 ): number {
-  if (model && WINDOW_BY_MODEL[model] !== undefined) {
-    return WINDOW_BY_MODEL[model];
+  if (model) {
+    // Claude models carry a `[1m]` suffix when the 1M context beta is
+    // enabled (see `resolveModel` in src/container-runner.ts). The suffix
+    // is appended for every Claude invocation in NanoClaw, so treat it as
+    // the authoritative window source regardless of the base model id.
+    if (model.endsWith('[1m]')) return 1_000_000;
+    if (WINDOW_BY_MODEL[model] !== undefined) {
+      return WINDOW_BY_MODEL[model];
+    }
   }
   return DEFAULT_WINDOW[sdk];
 }
