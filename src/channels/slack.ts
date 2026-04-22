@@ -659,20 +659,26 @@ export class SlackChannel implements Channel {
     let lastUpdateTime = 0;
     const updateInterval = 30_000; // Update Slack message every 30s
 
-    const transcriptPath = await transcribeAudio(audioPath, (progress) => {
-      const now = Date.now();
-      if (!progressTs || now - lastUpdateTime < updateInterval) return;
-      lastUpdateTime = now;
+    const transcriptPath = await transcribeAudio(
+      audioPath,
+      (progress) => {
+        const now = Date.now();
+        if (!progressTs || now - lastUpdateTime < updateInterval) return;
+        lastUpdateTime = now;
 
-      const timeInfo = progress.currentTime ? ` [${progress.currentTime}]` : '';
-      this.app.client.chat
-        .update({
-          channel: channelId,
-          ts: progressTs!,
-          text: `${fileName} 전사 중...${timeInfo}`,
-        })
-        .catch(() => {});
-    });
+        const timeInfo = progress.currentTime
+          ? ` [${progress.currentTime}]`
+          : '';
+        this.app.client.chat
+          .update({
+            channel: channelId,
+            ts: progressTs!,
+            text: `${fileName} 전사 중...${timeInfo}`,
+          })
+          .catch(() => {});
+      },
+      fileName,
+    );
 
     // Update progress message and send completion notification
     if (progressTs) {

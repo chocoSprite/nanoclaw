@@ -264,10 +264,17 @@ const PROGRESS_RE = /^PROGRESS stage=(\w+)(?: t=(\d{2}:\d{2}))?/;
 /**
  * Transcribe an audio file using the WhisperX Python wrapper.
  * Returns the path to the transcript .txt file, or null on failure.
+ *
+ * `sourceName` is the original filename before nanoclaw's epoch-prefix rename
+ * (e.g. `2026-04-21_14_11_13.mp3`). When provided, the wrapper embeds it as a
+ * `# source: <name>` header at the top of the output .txt, so agents can still
+ * extract recording datetime if the `[Transcript: ... (source: ...)]` message
+ * tag has been dropped from their context window.
  */
 export async function transcribeAudio(
   audioPath: string,
   onProgress?: (progress: TranscribeProgress) => void,
+  sourceName?: string,
 ): Promise<string | null> {
   if (!isWhisperXAvailable()) return null;
 
@@ -336,6 +343,9 @@ export async function transcribeAudio(
         '--initial-prompt',
         WHISPER_INITIAL_PROMPT,
       ];
+      if (sourceName) {
+        args.push('--source-name', sourceName);
+      }
 
       const proc = spawn(PYTHON_BIN, args, {
         stdio: ['ignore', 'ignore', 'pipe'],

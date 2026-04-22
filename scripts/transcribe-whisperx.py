@@ -89,6 +89,14 @@ def main() -> int:
         default="0.0,0.2,0.4,0.6,0.8,1.0",
         help="Comma-separated fallback temperatures, e.g. '0.0' disables fallback",
     )
+    parser.add_argument(
+        "--source-name",
+        default=None,
+        help="Original filename (before nanoclaw's epoch-prefix rename). Embedded as "
+        "`# source: <name>` header at the top of the output .txt so downstream agents "
+        "can extract recording datetime from patterns like YYYY-MM-DD_HH_MM_SS.mp3 "
+        "even if the message tag is lost from context.",
+    )
     args = parser.parse_args()
 
     initial_prompt = args.initial_prompt
@@ -206,9 +214,14 @@ def main() -> int:
             diarize_segments = diarize_pipeline(audio)
         result = whisperx.assign_word_speakers(diarize_segments, result)
 
-        # Write output
+        # Write output — prepend a `# source: <name>` header when the original
+        # Slack filename is known. Agents extract recording datetime from this
+        # header (YYYY-MM-DD_HH_MM_SS.mp3 pattern) when the message tag
+        # metadata is no longer in their context.
         out_path = f"{args.output_prefix}.txt"
         with open(out_path, "w", encoding="utf-8") as f:
+            if args.source_name:
+                f.write(f"# source: {args.source_name}\n\n")
             for seg in result.get("segments") or []:
                 speaker = seg.get("speaker") or "SPEAKER_??"
                 start = seg.get("start") or 0.0
