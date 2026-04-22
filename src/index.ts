@@ -14,7 +14,11 @@ import {
   getRegisteredChannelNames,
 } from './channels/registry.js';
 import { startSessionCleanup } from './session-cleanup.js';
-import { tryHandleSessionResetCommand } from './session-reset.js';
+import {
+  autoResetPairedLanes,
+  stripAutoResetMarker,
+  tryHandleSessionResetCommand,
+} from './session-reset.js';
 import type { SessionResetDeps, SessionHandlerDeps } from './session-reset.js';
 import {
   ContainerOutput,
@@ -40,7 +44,6 @@ import {
   getAvailableGroups,
   getCursor,
   getOrRecoverCursor,
-  getPhysicalChannel,
   loadGroupState,
   registerGroup,
   rollbackCursor,
@@ -90,8 +93,18 @@ let messageLoopRunning = false;
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
+// Populated by main() after deps construction. Read by processGroupMessages
+// to trigger auto session reset when an agent emits the <<AUTO_RESET_SESSIONS>>
+// marker in its output. Module-level because processGroupMessages lives at
+// module scope (queue callback) and needs access to the deps built inside main().
+let autoResetDepsRef: SessionHandlerDeps | null = null;
+
 // Bot-to-bot conversation guard: prevent infinite loops.
-const MAX_BOT_ROUNDS = 3;
+// 3 was too tight for 2-bot channels (pat+mat meeting-notes) where a single
+// transcript-to-meeting-note workflow naturally involves 4+ bot rounds
+// (draft → review request → feedback → revision → final). 10 gives headroom
+// while still catching true runaway loops.
+const MAX_BOT_ROUNDS = 10;
 
 /**
  * Process all pending messages for a group.
@@ -120,7 +133,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   // Bot-to-bot conversation guard: prevent infinite loops.
   // If all pending messages are from peer bots, increment counter.
   // If any human message is present, reset counter.
-  const ch = getPhysicalChannel(chatJid);
+  // Key is lane-scoped (chatJid) rather than physical-channel, so pat and
+  // mat in the same Slack channel track independent counters instead of
+  // double-incrementing a shared one.
+  const ch = chatJid;
   const hasHumanMessages = missedMessages.some((m) => !m.is_bot_message);
   const hasPeerBotMessages = missedMessages.some((m) => m.is_bot_message);
 
@@ -219,6 +235,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
+  let autoResetRequested = false;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -227,7 +244,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         typeof result.result === 'string'
           ? result.result
           : JSON.stringify(result.result);
-      const text = stripInternalTags(raw);
+      const stripped = stripInternalTags(raw);
+      // Detect <<AUTO_RESET_SESSIONS>> sentinel — strip from visible text and
+      // remember to trigger reset once this agent run completes.
+      const { text, hasMarker } = stripAutoResetMarker(stripped);
+      if (hasMarker) autoResetRequested = true;
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
         const threadTs = state.pendingThreadTs[chatJid];
@@ -253,6 +274,20 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
+
+  // Auto session reset via <<AUTO_RESET_SESSIONS>> marker. Fire-and-forget so
+  // subsequent message processing isn't blocked on container teardown.
+  // Skip on error — half-finished runs shouldn't purge sessions.
+  if (
+    autoResetRequested &&
+    output !== 'error' &&
+    !hadError &&
+    autoResetDepsRef
+  ) {
+    autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
+      logger.error({ err, chatJid }, 'Auto session reset failed'),
+    );
+  }
 
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
@@ -506,6 +541,9 @@ async function main(): Promise<void> {
     registeredGroups: state.registeredGroups,
     sendMessage: sendRaw,
   };
+  // Expose deps to module-scoped processGroupMessages for marker-triggered
+  // auto reset. Same object as used by the explicit "세션초기화" command.
+  autoResetDepsRef = sessionResetDeps;
 
   const remoteControlDeps: RemoteControlCommandDeps = {
     registeredGroups: state.registeredGroups,
@@ -524,10 +562,10 @@ async function main(): Promise<void> {
       if (shouldDropBySenderAllowlist(chatJid, msg, state.registeredGroups))
         return;
 
-      // Reset bot conversation counter when a human sends a message
+      // Reset bot conversation counter when a human sends a message.
+      // Lane-scoped (chatJid) matches the increment site in processGroupMessages.
       if (!msg.is_bot_message) {
-        const ch = getPhysicalChannel(chatJid);
-        delete state.botConversationCount[ch];
+        delete state.botConversationCount[chatJid];
       }
       storeMessage(msg);
 
@@ -614,6 +652,23 @@ async function main(): Promise<void> {
       writeGroupsSnapshot(gf, im, ag, rj),
     onTasksChanged: () => {
       writeAllTasksSnapshots(state.registeredGroups, getAllTasks());
+    },
+    // Auto session reset when IPC message contains <<AUTO_RESET_SESSIONS>>.
+    // Fire-and-forget, same pattern as the streaming onOutput path. Pat's
+    // meeting-notes workflow attaches the marker to its final report, which
+    // Codex typically delivers via send_message (IPC) — without this hook
+    // the paired-lane reset never fires.
+    onAutoResetRequest: (chatJid: string) => {
+      if (!autoResetDepsRef) {
+        logger.warn(
+          { chatJid },
+          'IPC auto-reset requested but deps not initialized yet',
+        );
+        return;
+      }
+      autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
+        logger.error({ err, chatJid }, 'IPC auto session reset failed'),
+      );
     },
   });
   queue.setProcessMessagesFn(processGroupMessages);

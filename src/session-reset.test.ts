@@ -3,9 +3,13 @@ import os from 'os';
 import path from 'path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  AUTO_RESET_MARKER,
+  autoResetPairedLanes,
   cleanSdkSessionFiles,
   findGroupByInput,
+  findPairedLanes,
   resetGroupSession,
+  stripAutoResetMarker,
   tryHandleSessionResetCommand,
 } from './session-reset.js';
 import type { SessionHandlerDeps, SessionResetDeps } from './session-reset.js';
@@ -347,5 +351,135 @@ describe('tryHandleSessionResetCommand', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(deps.sendMessage).toHaveBeenCalled();
     expect(deps.terminateGroup).toHaveBeenCalledWith('target-jid');
+  });
+});
+
+describe('stripAutoResetMarker', () => {
+  it('leaves text unchanged and reports hasMarker=false when absent', () => {
+    const { text, hasMarker } = stripAutoResetMarker('meeting note done.');
+    expect(text).toBe('meeting note done.');
+    expect(hasMarker).toBe(false);
+  });
+
+  it('strips the sentinel and reports hasMarker=true', () => {
+    const input = `done.\n\n${AUTO_RESET_MARKER}`;
+    const { text, hasMarker } = stripAutoResetMarker(input);
+    expect(text).toBe('done.');
+    expect(hasMarker).toBe(true);
+  });
+
+  it('strips multiple occurrences and collapses blank-line runs', () => {
+    const input = `head\n\n${AUTO_RESET_MARKER}\n\n\nmiddle\n\n${AUTO_RESET_MARKER}\ntail`;
+    const { text, hasMarker } = stripAutoResetMarker(input);
+    expect(text).toBe('head\n\nmiddle\n\ntail');
+    expect(hasMarker).toBe(true);
+  });
+});
+
+describe('findPairedLanes', () => {
+  const groups = {
+    'slack:C0AP71364H5': {
+      folder: 'slack_agent_meeting_notes_pat',
+    } as RegisteredGroup,
+    'slack-mat:C0AP71364H5': {
+      folder: 'slack_agent_meeting_notes_mat',
+    } as RegisteredGroup,
+    'slack:C0OTHER99999': {
+      folder: 'slack_unrelated',
+    } as RegisteredGroup,
+  };
+
+  it('returns both lanes for a pat+mat 2-bot channel', () => {
+    const paired = findPairedLanes('slack:C0AP71364H5', groups).sort();
+    expect(paired).toEqual(
+      ['slack:C0AP71364H5', 'slack-mat:C0AP71364H5'].sort(),
+    );
+  });
+
+  it('returns just the input jid for a single-bot channel', () => {
+    expect(findPairedLanes('slack:C0OTHER99999', groups)).toEqual([
+      'slack:C0OTHER99999',
+    ]);
+  });
+
+  it('returns empty when the physical channel has no registered lanes', () => {
+    expect(findPairedLanes('slack:UNKNOWN_CHAN', groups)).toEqual([]);
+  });
+});
+
+describe('autoResetPairedLanes', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeGroup(folder: string): RegisteredGroup {
+    return {
+      name: folder,
+      folder,
+      trigger: '@pat',
+      sdk: 'codex',
+    } as RegisteredGroup;
+  }
+
+  it('resets both lanes of a pat+mat pair and notifies each', async () => {
+    const registeredGroups = {
+      'slack:C0CHAN': makeGroup('slack_pair_pat'),
+      'slack-mat:C0CHAN': makeGroup('slack_pair_mat'),
+    };
+    // Create SDK dirs so cleanSdkSessionFiles has something to touch.
+    for (const folder of ['slack_pair_pat', 'slack_pair_mat']) {
+      const base = path.join(tmpDir, 'sessions', folder, '.codex');
+      fs.mkdirSync(base, { recursive: true });
+      fs.writeFileSync(path.join(base, 'state_5.sqlite'), 'data');
+    }
+
+    const sessions: Record<string, string> = {
+      slack_pair_pat: 'sess-pat',
+      slack_pair_mat: 'sess-mat',
+    };
+    const terminateGroup = vi.fn(async () => {});
+    const deleteSession = vi.fn();
+    const sendMessage = vi.fn(async () => {});
+
+    const deps: SessionHandlerDeps = {
+      dataDir: tmpDir,
+      sessions,
+      terminateGroup,
+      deleteSession,
+      registeredGroups,
+      sendMessage,
+    };
+
+    await autoResetPairedLanes('slack:C0CHAN', deps);
+
+    expect(terminateGroup).toHaveBeenCalledWith('slack:C0CHAN');
+    expect(terminateGroup).toHaveBeenCalledWith('slack-mat:C0CHAN');
+    expect(deleteSession).toHaveBeenCalledWith('slack_pair_pat');
+    expect(deleteSession).toHaveBeenCalledWith('slack_pair_mat');
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sessions).not.toHaveProperty('slack_pair_pat');
+    expect(sessions).not.toHaveProperty('slack_pair_mat');
+  });
+
+  it('logs and returns early when no paired lanes are registered', async () => {
+    const deps: SessionHandlerDeps = {
+      dataDir: tmpDir,
+      sessions: {},
+      terminateGroup: vi.fn(async () => {}),
+      deleteSession: vi.fn(),
+      registeredGroups: {},
+      sendMessage: vi.fn(async () => {}),
+    };
+
+    await autoResetPairedLanes('slack:UNKNOWN', deps);
+
+    expect(deps.terminateGroup).not.toHaveBeenCalled();
+    expect(deps.sendMessage).not.toHaveBeenCalled();
   });
 });

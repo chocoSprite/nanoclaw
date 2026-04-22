@@ -3,7 +3,57 @@ import path from 'path';
 
 import type { NewMessage, RegisteredGroup } from './types.js';
 
+import { getPhysicalChannel } from './group-state.js';
 import { logger } from './logger.js';
+
+/**
+ * Sentinel marker an agent includes in its final output text to request
+ * automatic session reset for itself + paired-lane peers (e.g. pat's marker
+ * resets both pat and mat in a 2-bot meeting-notes channel).
+ *
+ * Orchestrator pipeline:
+ *   agent output text → stripAutoResetMarker (strip + flag)
+ *                    → sendMessage (visible text, marker hidden)
+ *                    → autoResetPairedLanes (after agent run completes)
+ *
+ * Sentinel is ASCII-safe and unlikely to appear in normal user/agent text.
+ */
+export const AUTO_RESET_MARKER = '<<AUTO_RESET_SESSIONS>>';
+
+/**
+ * Strip the auto-reset sentinel from agent output text and return whether
+ * the marker was present. Also collapses runs of >=3 newlines that the
+ * removal may leave behind.
+ */
+export function stripAutoResetMarker(text: string): {
+  text: string;
+  hasMarker: boolean;
+} {
+  if (!text.includes(AUTO_RESET_MARKER)) {
+    return { text, hasMarker: false };
+  }
+  const stripped = text
+    .split(AUTO_RESET_MARKER)
+    .join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { text: stripped, hasMarker: true };
+}
+
+/**
+ * Find all registered group JIDs sharing the same physical channel as `jid`.
+ * For pat/mat 2-bot Slack channels this returns both lanes; for single-bot
+ * channels (or unregistered JIDs) it returns just the input.
+ */
+export function findPairedLanes(
+  jid: string,
+  registeredGroups: Record<string, RegisteredGroup>,
+): string[] {
+  const physical = getPhysicalChannel(jid);
+  return Object.keys(registeredGroups).filter(
+    (other) => getPhysicalChannel(other) === physical,
+  );
+}
 
 /** Dependencies injected by the orchestrator. */
 export interface SessionResetDeps {
@@ -233,6 +283,57 @@ export async function handleSessionResetAll(
     chatJid,
     `:arrows_counterclockwise: *전체 세션 초기화 완료* (${groups.length}개)\n${results.map((r) => `• ${r}`).join('\n')}`,
   );
+}
+
+/**
+ * Reset sessions for all lanes paired with `triggerJid` (same physical
+ * channel). Used by the `<<AUTO_RESET_SESSIONS>>` marker path: when an agent
+ * finishes a task and wants to clear its own context + the peer lane's (e.g.
+ * pat finalizing a meeting note also resets mat's review session).
+ *
+ * Emits a single compact notification to each reset lane. Errors per lane
+ * are logged and do not abort the others.
+ */
+export async function autoResetPairedLanes(
+  triggerJid: string,
+  deps: SessionHandlerDeps,
+): Promise<void> {
+  const lanes = findPairedLanes(triggerJid, deps.registeredGroups);
+  if (lanes.length === 0) {
+    logger.warn(
+      { triggerJid },
+      'Auto reset requested but no paired lanes found',
+    );
+    return;
+  }
+
+  for (const targetJid of lanes) {
+    const group = deps.registeredGroups[targetJid];
+    if (!group) continue;
+    try {
+      const result = await resetGroupSession(targetJid, group, deps);
+      logger.info(
+        {
+          trigger: 'auto-reset-marker',
+          triggerJid,
+          target: group.folder,
+          sdk: result.sdkType,
+          errors: result.errors,
+        },
+        'Auto session reset via marker',
+      );
+      const status = result.errors.length === 0 ? 'OK' : 'partial';
+      await deps.sendMessage(
+        targetJid,
+        `:arrows_counterclockwise: 세션 자동 초기화 (${status})`,
+      );
+    } catch (err) {
+      logger.error(
+        { err, targetJid, group: group.name },
+        'Auto session reset failed',
+      );
+    }
+  }
 }
 
 /**

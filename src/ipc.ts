@@ -7,6 +7,7 @@ import { isValidGroupFolder } from './group-folder.js';
 import { AvailableGroup } from './group-state.js';
 import { logger } from './logger.js';
 import { computeInitialNextRun } from './schedule-utils.js';
+import { stripAutoResetMarker } from './session-reset.js';
 import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
@@ -22,6 +23,15 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
+  /**
+   * Fire-and-forget auto session reset trigger. Called when an IPC message
+   * contains the `<<AUTO_RESET_SESSIONS>>` sentinel. Mirrors the streaming
+   * onOutput path in processGroupMessages, which otherwise would never run
+   * for messages sent via `mcp__nanoclaw__send_message` (IPC bypasses the
+   * agent_message → writeOutput → onOutput chain where stripAutoResetMarker
+   * is applied).
+   */
+  onAutoResetRequest?: (chatJid: string) => void;
 }
 
 let ipcWatcherRunning = false;
@@ -80,11 +90,30 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   isMain ||
                   (targetGroup && targetGroup.folder === sourceGroup)
                 ) {
-                  await deps.sendMessage(data.chatJid, data.text);
+                  // Strip <<AUTO_RESET_SESSIONS>> sentinel — matches the
+                  // streaming onOutput path in processGroupMessages. Without
+                  // this, messages sent via mcp__nanoclaw__send_message leak
+                  // the marker literal to Slack AND skip the auto-reset
+                  // trigger entirely (since onOutput is never called for
+                  // IPC-routed messages). `<internal>` stripping already
+                  // happens downstream in formatOutbound.
+                  const { text: cleanedText, hasMarker } = stripAutoResetMarker(
+                    data.text,
+                  );
+                  if (cleanedText) {
+                    await deps.sendMessage(data.chatJid, cleanedText);
+                  }
                   logger.info(
-                    { chatJid: data.chatJid, sourceGroup },
+                    {
+                      chatJid: data.chatJid,
+                      sourceGroup,
+                      autoReset: hasMarker,
+                    },
                     'IPC message sent',
                   );
+                  if (hasMarker && deps.onAutoResetRequest) {
+                    deps.onAutoResetRequest(data.chatJid);
+                  }
                 } else {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
