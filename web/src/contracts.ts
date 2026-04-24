@@ -290,11 +290,12 @@ export const CODEX_DEFAULT_MODEL_DISPLAY = 'gpt-5.4';
  * Codex model IDs the dashboard editor will send. Keep in sync with
  * `src/dashboard/config.ts::CODEX_MODEL_WHITELIST`.
  */
-export const CODEX_MODELS = ['gpt-5.4', 'gpt-5', 'o3'] as const;
+export const CODEX_MODELS = ['gpt-5.5', 'gpt-5.4', 'gpt-5', 'o3'] as const;
 
 export type CodexModelId = (typeof CODEX_MODELS)[number];
 
 export const CODEX_MODEL_LABELS: Record<CodexModelId, string> = {
+  'gpt-5.5': 'GPT-5.5',
   'gpt-5.4': 'GPT-5.4',
   'gpt-5': 'GPT-5',
   o3: 'o3',

@@ -76,7 +76,12 @@ export function isValidClaudeModel(value: unknown): value is ClaudeModelId {
  *
  * `null` means "fall back to ~/.codex/config.toml's global default".
  */
-export const CODEX_MODEL_WHITELIST = ['gpt-5.4', 'gpt-5', 'o3'] as const;
+export const CODEX_MODEL_WHITELIST = [
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-5',
+  'o3',
+] as const;
 
 export type CodexModelId = (typeof CODEX_MODEL_WHITELIST)[number];
 
