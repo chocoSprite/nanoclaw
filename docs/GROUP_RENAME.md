@@ -1,6 +1,6 @@
 # Renaming a Group Folder
 
-`groups/{name}` 폴더 리네임은 단순한 `mv` 가 아니다. DB · 파일시스템 · OneCLI 세 계층에 흩어진 7개 지점을 순서대로 동기화해야 in-memory stale 없이 정착한다. 빠뜨리기 쉬운 항목(★)은 실제로 빠졌던 지점.
+`groups/{name}` 폴더 리네임은 단순한 `mv` 가 아니다. DB · 파일시스템 두 계층에 흩어진 7개 지점을 순서대로 동기화해야 in-memory stale 없이 정착한다. 빠뜨리기 쉬운 항목(★)은 실제로 빠졌던 지점.
 
 ## Prerequisite
 
@@ -17,8 +17,6 @@
 5. **`groups/{old}/` → `groups/{new}/`** — `.gitignore` 됐으므로 일반 `mv`, `git mv` 아님.
 6. **`data/ipc/{old}/`** — 실행 중 컨테이너의 bind mount. 반드시 컨테이너 종료 후.
 7. **`data/sessions/{old}/ ★`** — Codex 세션 + agent-runner-src 저장소. 초기 체크리스트에서 빠지기 쉬움.
-
-추가로: **OneCLI agent identifier** 는 불변이라 리네임 자체가 불가능. `onecli agent create` (new) → `set-secrets` → `delete` (old) 3단계로 재생성. 상세는 `reference_onecli_gateway.md`.
 
 ## Restart and verify
 
@@ -40,8 +38,9 @@
 봇 identity 변경 (pat ↔ mat, dev → pat 통일 등) 을 같이 한다면:
 
 - `src/channels/{file}.ts` 에서 `readEnvFile([...])`, `botTokenKey`, `appTokenKey`, `triggerName` 전수 치환. 예: `SLACK_REVIEW_*` → `SLACK_MAT_*` 시 `slack-review.ts` 4곳.
-- `.env` 키 갱신. OneCLI vault 사용 중이면 거기도 확인.
+- `.env` 키 갱신.
 
 ## History
 
 - 2026-04-15: `_dev` / `_review` / 무접미사 → `_pat` / `_mat` 통일 작업에서 이 체크리스트가 정착. `name` 컬럼 · `data/sessions` · OneCLI identifier 가 당시 초안에서 빠져 있었고 운영 중 발견.
+- 2026-04-25: OneCLI 통합 제거. agent identifier 재생성 단계 폐기.

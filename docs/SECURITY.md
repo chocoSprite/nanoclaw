@@ -64,18 +64,23 @@ Messages and task operations are verified against group identity:
 | View all tasks | ✓ | Own only |
 | Manage other groups | ✓ | ✗ |
 
-### 5. Credential Isolation (OneCLI Agent Vault)
+### 5. Credential Isolation
 
-Real API credentials **never enter containers**. NanoClaw uses [OneCLI's Agent Vault](https://github.com/onecli/onecli) to proxy outbound requests and inject credentials at the gateway level.
+NanoClaw 는 SDK 별 최소 주입 원칙으로 자격 증명을 다룬다.
 
-**How it works:**
-1. Credentials are registered once with `onecli secrets create`, stored and managed by OneCLI
-2. When NanoClaw spawns a container, it calls `applyContainerConfig()` to route outbound HTTPS through the OneCLI gateway
-3. The gateway matches requests by host and path, injects the real credential, and forwards
-4. Agents cannot discover real credentials — not in environment, stdin, files, or `/proc`
+**Claude SDK 컨테이너**:
+- 호스트 `applyCredentialArgs()` 가 macOS keychain 의 `Claude Code-credentials` 에서 OAuth 토큰을 읽어 `CLAUDE_CODE_OAUTH_TOKEN` env 한 개만 주입.
+- 토큰은 컨테이너 env 에만 존재 — 디스크에 안 씀, `.env` 에 안 씀.
+- Keychain 접근은 호스트 사용자 권한이 필요하므로 컨테이너 내부에서 추출 불가.
 
-**Per-agent policies:**
-Each NanoClaw group gets its own OneCLI agent identity. This allows different credential policies per group (e.g. your sales agent vs. support agent). OneCLI supports rate limits, and time-bound access and approval flows are on the roadmap.
+**Codex SDK 컨테이너**:
+- 호스트 `~/.codex/auth.json` (ChatGPT bearer 토큰) 을 그룹별 sessions dir 에 mtime 비교 복사 후 `/home/node/.codex/auth.json` 으로 마운트.
+- 각 그룹이 독립 사본을 가지므로 cross-group 토큰 유출 없음.
+- 토큰 만료 시 호스트 `~/.codex/auth.json` 갱신 → 다음 spawn 때 자동 sync.
+
+**기타 채널 토큰** (Slack pat/mat, Gmail, …):
+- 호스트 `.env` 에서 호스트 프로세스만 읽음. 컨테이너 mount 에서 `.env` 는 entrypoint 의 `mount --bind /dev/null` 로 가려짐.
+- 어떤 토큰도 컨테이너 args 나 env 로 전달되지 않음.
 
 **NOT Mounted:**
 - Mount allowlist — external, never mounted
@@ -108,7 +113,7 @@ Each NanoClaw group gets its own OneCLI agent identity. This allows different cr
 │  • IPC authorization                                              │
 │  • Mount validation (external allowlist)                          │
 │  • Container lifecycle                                            │
-│  • OneCLI Agent Vault (injects credentials, enforces policies)   │
+│  • Per-SDK credential injection (Claude keychain / Codex mount) │
 └────────────────────────────────┬─────────────────────────────────┘
                                  │
                                  ▼ Explicit mounts only, no secrets
@@ -117,7 +122,7 @@ Each NanoClaw group gets its own OneCLI agent identity. This allows different cr
 │  • Agent execution                                                │
 │  • Bash commands (sandboxed)                                      │
 │  • File operations (limited to mounts)                            │
-│  • API calls routed through OneCLI Agent Vault                   │
-│  • No real credentials in environment or filesystem              │
+│  • API calls authenticated by injected token (Claude OAuth / Codex bearer) │
+│  • Channel tokens (.env) never enter container                   │
 └──────────────────────────────────────────────────────────────────┘
 ```

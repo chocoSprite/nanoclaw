@@ -22,9 +22,12 @@ Single Node.js process with skill-based channel system. Channels (Slack, Gmail) 
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/` | Skills loaded inside agent containers (browser, status, formatting) |
 
-## Secrets / Credentials / Proxy (OneCLI)
+## Secrets / Credentials
 
-API keys, secret keys, OAuth tokens, and auth credentials are managed by the OneCLI gateway — which handles secret injection into containers at request time, so no keys or tokens are ever passed to containers directly. Run `onecli --help`.
+- **Claude SDK**: macOS keychain (`security find-generic-password -s "Claude Code-credentials"`) 의 OAuth 토큰을 컨테이너 env 로 직접 주입 (`src/container-credentials.ts`). 만료 시 `claude setup-token`.
+- **Codex SDK**: 호스트 `~/.codex/auth.json` 을 그룹별 sessions dir 에 mtime 비교 복사 후 `/home/node/.codex/` 마운트 (`src/container-mounts.ts`). ChatGPT bearer 토큰 직접 사용.
+- **Slack / 기타 채널 토큰**: `.env` (호스트 프로세스 전용, 컨테이너 진입 0).
+- OneCLI 게이트웨이 통합은 2026-04-25 부로 제거됨.
 
 ## Channels & Groups
 
@@ -32,7 +35,7 @@ API keys, secret keys, OAuth tokens, and auth credentials are managed by the One
 - Env vars follow the same identity-based naming: `SLACK_PAT_*` / `SLACK_MAT_*`, never role-based (`SLACK_REVIEW_*` is dead).
 - Channel registry truth lives in `store/messages.db` (`registered_groups`). Docs drift — query the DB when verifying current state.
 - JID prefixes: `slack:` (pat lane) / `slack-mat:` (mat lane) — migration 11 renamed `slack-review:` → `slack-mat:`.
-- Renaming a group folder: see [docs/GROUP_RENAME.md](docs/GROUP_RENAME.md) for the 7-point DB/filesystem/OneCLI sync checklist.
+- Renaming a group folder: see [docs/GROUP_RENAME.md](docs/GROUP_RENAME.md) for the 7-point DB/filesystem sync checklist.
 
 ## Skills
 

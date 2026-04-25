@@ -514,3 +514,7 @@ C 트랙 종료 후 남은 3건을 독립 PR 3개로 분할 머지. 플랜: `~/.
 - **Explore agent 의 "함수 사용 중" 주장 검증 필요** — `hasPendingMessages()` 처럼 agent 가 문자열 매치만으로 "사용됨" 결론 내릴 때 있음. `grep -rn <name>(` 으로 직접 확인이 안전
 - **Migration drop-column 전 dry-run 은 필수** — 실 DB 백업 → /tmp 에 복사 → DROP 두 번 → 컬럼 확인. better-sqlite3 DROP COLUMN 지원 여부 + 실 데이터에 제약 조건 (FK, 인덱스) 걸림 없는지 한 번에 확인. 이번엔 둘 다 clean 이었지만 sanity check 비용 무시 가능
 - **migration idempotency 는 try/catch** — CREATE TABLE 에서 컬럼 뺏으면 fresh install 에선 DROP 할 컬럼 없음 → SQLite 에러. `try { DROP } catch { /* never existed */ }` 패턴이 migrations 전체에서 이미 관례
+
+## 2026-04-25 OneCLI 제거 후속
+
+OneCLI 게이트웨이 통합이 nanoclaw 코드에서 완전히 제거됨. Dashboard 의 OneCLI 탭 구상 / `onecli-service.ts` 이식 / OneCLI 401 banner / `reference_onecli_gateway.md` 참조는 모두 무효. 이 문서의 OneCLI 언급은 역사 기록으로 유지.

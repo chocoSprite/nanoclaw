@@ -74,7 +74,9 @@ Slack mrkdwn 문법. 자세한 규칙은 `/slack-formatting` 참조.
 
 ## 인증
 
-Anthropic 자격 증명은 console.anthropic.com의 API 키(`ANTHROPIC_API_KEY`) 또는 `claude setup-token`의 장기 OAuth 토큰(`CLAUDE_CODE_OAUTH_TOKEN`)이어야 한다. 시스템 키체인이나 `~/.claude/.credentials.json`의 단기 토큰은 수 시간 내 만료되어 컨테이너 401 에러를 유발한다. `/setup` 스킬로 설정한다. OneCLI가 자격 증명을 관리한다 — `onecli --help` 참조.
+Anthropic 자격 증명은 console.anthropic.com의 API 키(`ANTHROPIC_API_KEY`) 또는 `claude setup-token`의 장기 OAuth 토큰(`CLAUDE_CODE_OAUTH_TOKEN`)이어야 한다. 시스템 키체인이나 `~/.claude/.credentials.json`의 단기 토큰은 수 시간 내 만료되어 컨테이너 401 에러를 유발한다. `/setup` 스킬로 설정한다.
+
+Claude SDK 는 macOS keychain 의 `Claude Code-credentials` 항목에서 OAuth 토큰을 읽어 컨테이너에 직접 주입한다. Codex SDK 는 `~/.codex/auth.json` 을 마운트한다.
 
 ## 컨테이너 마운트
 

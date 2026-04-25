@@ -79,7 +79,6 @@ A personal Claude assistant with multi-channel support, persistent memory per co
 | Message Storage | SQLite (better-sqlite3) | Store messages for polling |
 | Container Runtime | Containers (Linux VMs) | Isolated environments for agent execution |
 | Agent CLI | Claude Code CLI / Codex CLI (installed in container image) | Spawned per turn by `container-runner`; choice per lane |
-| Secret Proxy | OneCLI gateway (`@onecli-sh/sdk`) | Injects API keys/tokens into containers at request time |
 | Browser Automation | agent-browser + Chromium | Web interaction and screenshots |
 | Runtime | Node.js 20+ | Host process for routing and scheduling |
 
@@ -269,7 +268,7 @@ nanoclaw/
 │   ├── ipc.ts                     # IPC watcher and task processing
 │   ├── container-runner.ts        # Spawns agents in containers
 │   ├── container-runtime.ts       # Container binary detection and lifecycle
-│   ├── container-credentials.ts   # OneCLI credential injection for containers
+│   ├── container-credentials.ts   # Claude OAuth keychain → CLAUDE_CODE_OAUTH_TOKEN env injection
 │   ├── container-mounts.ts        # Volume mount assembly
 │   ├── container-path-translator.ts # Host↔container path mapping
 │   ├── group-queue.ts             # Per-group queue with global concurrency limit
@@ -370,7 +369,6 @@ Key constants (see `src/config.ts` for full source):
 | `CONTAINER_TIMEOUT` | `1800000` ms (30 min) | Max container run time |
 | `IDLE_TIMEOUT` | `1800000` ms (30 min) | Keep container alive after last result |
 | `MAX_CONCURRENT_CONTAINERS` | `5` | Global concurrency cap |
-| `ONECLI_URL` | `http://localhost:10254` | OneCLI gateway address |
 | `MAX_MESSAGES_PER_PROMPT` | `10` | Message catch-up limit |
 
 Paths (`STORE_DIR`, `GROUPS_DIR`, `DATA_DIR`) are resolved as absolute from `process.cwd()` — required for container volume mounts.
@@ -406,15 +404,13 @@ Additional mounts appear at `/workspace/extra/{containerPath}` inside the contai
 
 **Mount syntax note:** Read-write mounts use `-v host:container`, but readonly mounts require `--mount "type=bind,source=...,target=...,readonly"` (the `:ro` suffix may not work on all runtimes).
 
-### Secret Management (OneCLI)
+### Secret Management
 
-API keys and credentials are **not** stored in `.env` or passed to containers directly. The OneCLI gateway (`ONECLI_URL`, default `http://localhost:10254`) handles secret injection at request time:
+- **Claude OAuth**: macOS keychain (`Claude Code-credentials`) → `CLAUDE_CODE_OAUTH_TOKEN` env (`src/container-credentials.ts`).
+- **Codex OAuth**: host `~/.codex/auth.json` → mounted at `/home/node/.codex/auth.json` (`src/container-mounts.ts`).
+- **Channel tokens** (Slack, Gmail, etc.): host `.env`, host process only. Container `.env` masked via `mount --bind /dev/null` in entrypoint.
 
-- `container-credentials.ts` calls OneCLI to obtain per-container secrets
-- Secrets are injected into the container environment by the runner — never written to disk inside the container
-- Supported secrets: Claude API keys, Codex API keys, Slack tokens, and any other credentials registered in OneCLI
-
-See `onecli --help` for secret registration and agent assignment.
+No runtime secret-proxy gateway is involved.
 
 ### Changing the Assistant Name
 
@@ -763,7 +759,8 @@ Inbound channel messages could contain malicious instructions attempting to mani
 
 | Credential | Storage Location | Notes |
 |------------|------------------|-------|
-| API keys (Claude, Codex, etc.) | OneCLI gateway | Injected at container spawn time — never on disk inside container |
+| Claude OAuth | macOS keychain → CLAUDE_CODE_OAUTH_TOKEN env at spawn | Read by host, never on disk in container |
+| Codex OAuth  | host ~/.codex/auth.json → mounted at /home/node/.codex/auth.json | Per-group copy, mtime-synced |
 | Slack tokens | `.env` (SLACK_PAT_*, SLACK_MAT_*) | Read by host process at startup |
 | Session state | data/sessions/{group}/.claude/ | Per-group isolation, mounted to /home/node/.claude/ |
 
