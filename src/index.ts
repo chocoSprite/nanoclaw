@@ -234,7 +234,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
-  let autoResetRequested = false;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -245,9 +244,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           : JSON.stringify(result.result);
       const stripped = stripInternalTags(raw);
       // Detect <<AUTO_RESET_SESSIONS>> sentinel — strip from visible text and
-      // remember to trigger reset once this agent run completes.
+      // fire reset immediately. The previous design deferred the trigger to
+      // the post-loop block below, but a Codex container that stays alive
+      // idle for tens of minutes after its final output (observed 42min on
+      // meeting_notes_pat 2026-04-25) delayed reset by exactly that idle
+      // window. Firing eagerly makes the reset prompt regardless of
+      // container exit timing. Fire-and-forget so streaming continues.
       const { text, hasMarker } = stripAutoResetMarker(stripped);
-      if (hasMarker) autoResetRequested = true;
+      if (hasMarker && autoResetDepsRef) {
+        autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
+          logger.error({ err, chatJid }, 'Auto session reset failed'),
+        );
+      }
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
         const threadTs = state.pendingThreadTs[chatJid];
@@ -273,20 +281,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
-
-  // Auto session reset via <<AUTO_RESET_SESSIONS>> marker. Fire-and-forget so
-  // subsequent message processing isn't blocked on container teardown.
-  // Skip on error — half-finished runs shouldn't purge sessions.
-  if (
-    autoResetRequested &&
-    output !== 'error' &&
-    !hadError &&
-    autoResetDepsRef
-  ) {
-    autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
-      logger.error({ err, chatJid }, 'Auto session reset failed'),
-    );
-  }
 
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
