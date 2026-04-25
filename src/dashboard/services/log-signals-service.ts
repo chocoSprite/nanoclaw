@@ -4,7 +4,7 @@
  * signals drive the TopBar bell dropdown and the LogsPage banner.
  *
  * Detection kinds:
- *  - `oauth_failure`      401/403 on the host logger (Slack/OneCLI scopes)
+ *  - `oauth_failure`      401/403 on the host logger (Slack/Anthropic scopes)
  *  - `crash_loop`         container.exited with non-zero exitCode N times in W seconds
  *  - `upstream_outage`    5xx / overloaded errors from Claude/Codex providers (multi-group)
  *

@@ -77,7 +77,6 @@ async function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
   isMain: boolean,
-  agentIdentifier?: string,
   sdk: 'codex' | 'claude' = 'codex',
 ): Promise<string[]> {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
@@ -89,7 +88,7 @@ async function buildContainerArgs(
   // Harmless if the file doesn't exist — git silently falls back to defaults.
   args.push('-e', 'GIT_CONFIG_GLOBAL=/etc/nanoclaw-git/.gitconfig');
 
-  await applyCredentialArgs(args, containerName, agentIdentifier, sdk);
+  await applyCredentialArgs(args, containerName, sdk);
 
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
@@ -138,15 +137,10 @@ export async function runContainerAgent(
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  // Main group uses the default OneCLI agent; others use their own agent.
-  const agentIdentifier = input.isMain
-    ? undefined
-    : group.folder.toLowerCase().replace(/_/g, '-');
   const containerArgs = await buildContainerArgs(
     mounts,
     containerName,
     input.isMain,
-    agentIdentifier,
     input.sdk,
   );
 

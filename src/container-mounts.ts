@@ -1,13 +1,12 @@
 /**
  * Container mount configuration for NanoClaw.
- * Builds volume mount specifications and normalizes OneCLI cert mounts.
+ * Builds volume mount specifications.
  */
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 import { DATA_DIR, GROUPS_DIR } from './config.js';
-import { CONTAINER_RUNTIME_BIN } from './container-runtime.js';
 import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
@@ -16,81 +15,6 @@ export interface VolumeMount {
   hostPath: string;
   containerPath: string;
   readonly: boolean;
-}
-
-/**
- * Normalize OneCLI cert file mounts for Apple Container compatibility.
- * Apple Container (VirtioFS) only supports directory mounts, not file mounts.
- * OneCLI creates temp .pem cert files and mounts them individually — this
- * copies them into a single directory and replaces file mounts with one
- * directory mount.
- * Also fixes host.docker.internal → 192.168.64.1 for Apple Container networking.
- */
-export function normalizeOneCLIMounts(args: string[]): void {
-  const onecliDir = path.join(DATA_DIR, 'onecli');
-  fs.mkdirSync(onecliDir, { recursive: true });
-  const replacements = new Map<string, string>();
-  const keptArgs: string[] = [];
-  const appleContainerHost =
-    CONTAINER_RUNTIME_BIN === 'container' && os.platform() === 'darwin'
-      ? '192.168.64.1'
-      : null;
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] !== '-v' || i === args.length - 1) {
-      keptArgs.push(args[i]);
-      continue;
-    }
-
-    const mountSpec = args[i + 1];
-    const firstColon = mountSpec.indexOf(':');
-    if (firstColon === -1) {
-      keptArgs.push(args[i], args[i + 1]);
-      i++;
-      continue;
-    }
-
-    const hostPath = mountSpec.slice(0, firstColon);
-    const remainder = mountSpec.slice(firstColon + 1);
-    const containerPath = remainder.split(':')[0];
-
-    if (
-      !hostPath.endsWith('.pem') ||
-      !containerPath.startsWith('/tmp/onecli-') ||
-      !fs.existsSync(hostPath)
-    ) {
-      keptArgs.push(args[i], args[i + 1]);
-      i++;
-      continue;
-    }
-
-    const copiedPath = path.join(onecliDir, path.basename(hostPath));
-    fs.copyFileSync(hostPath, copiedPath);
-    fs.chmodSync(copiedPath, 0o644);
-    replacements.set(
-      containerPath,
-      `/tmp/onecli-certs/${path.basename(hostPath)}`,
-    );
-    i++;
-  }
-
-  for (let i = 0; i < keptArgs.length - 1; i++) {
-    if (keptArgs[i] !== '-e') continue;
-    const [key, ...rest] = keptArgs[i + 1].split('=');
-    if (!key || rest.length === 0) continue;
-    let value = rest.join('=');
-    value = replacements.get(value) ?? value;
-    if (appleContainerHost) {
-      value = value.replaceAll('host.docker.internal', appleContainerHost);
-    }
-    keptArgs[i + 1] = `${key}=${value}`;
-  }
-
-  args.splice(0, args.length, ...keptArgs);
-
-  if (replacements.size > 0) {
-    args.push('-v', `${onecliDir}:/tmp/onecli-certs:ro`);
-  }
 }
 
 export function buildVolumeMounts(

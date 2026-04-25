@@ -13,9 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { OneCLI } from '@onecli-sh/sdk';
-
-import { GROUPS_DIR, ONECLI_URL } from './config.js';
+import { GROUPS_DIR } from './config.js';
 import {
   getAllChats,
   getAllRegisteredGroups,
@@ -44,29 +42,8 @@ export const state = {
 // setCursor / rollbackCursor so the DB stays in sync.
 let lastAgentTimestamp: Record<string, string> = {};
 
-const onecli = new OneCLI({ url: ONECLI_URL });
-
 export function getPhysicalChannel(jid: string): string {
   return jid.replace(/^[^:]+:/, '');
-}
-
-export function ensureOneCLIAgent(jid: string, group: RegisteredGroup): void {
-  if (group.isMain) return;
-  const identifier = group.folder.toLowerCase().replace(/_/g, '-');
-  onecli.ensureAgent({ name: group.name, identifier }).then(
-    (res) => {
-      logger.info(
-        { jid, identifier, created: res.created },
-        'OneCLI agent ensured',
-      );
-    },
-    (err) => {
-      logger.debug(
-        { jid, identifier, err: String(err) },
-        'OneCLI agent ensure skipped',
-      );
-    },
-  );
 }
 
 export function loadGroupState(): void {
@@ -153,9 +130,6 @@ export function registerGroup(jid: string, group: RegisteredGroup): void {
       logger.info({ folder: group.folder }, 'Created CLAUDE.md from template');
     }
   }
-
-  // Ensure a corresponding OneCLI agent exists (best-effort, non-blocking)
-  ensureOneCLIAgent(jid, group);
 
   // Update groups snapshot for all groups (new group is now visible)
   const availGroups = getAvailableGroups();
