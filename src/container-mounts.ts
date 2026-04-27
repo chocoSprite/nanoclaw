@@ -17,6 +17,24 @@ export interface VolumeMount {
   readonly: boolean;
 }
 
+/**
+ * Copy host ~/.codex/{auth.json,config.toml} into the group sessions dir,
+ * unconditionally overwriting any existing group copy. Host is the source of
+ * truth; container-side refreshes are ephemeral and reset on next spawn.
+ */
+export function seedCodexAuthAndConfig(
+  hostCodexDir: string,
+  groupSessionsDir: string,
+): void {
+  for (const file of ['auth.json', 'config.toml']) {
+    const hostFile = path.join(hostCodexDir, file);
+    const groupFile = path.join(groupSessionsDir, file);
+    if (fs.existsSync(hostFile)) {
+      fs.copyFileSync(hostFile, groupFile);
+    }
+  }
+}
+
 export function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
@@ -122,21 +140,10 @@ export function buildVolumeMounts(
   } else {
     // Seed group session from host Codex login so subscription users don't need API keys.
     // Copy auth.json (OAuth tokens) and config.toml (model/MCP settings).
-    // Only overwrite if host file is newer (preserves container-refreshed tokens).
-    const hostCodexDir = path.join(os.homedir(), '.codex');
-    for (const file of ['auth.json', 'config.toml']) {
-      const hostFile = path.join(hostCodexDir, file);
-      const groupFile = path.join(groupSessionsDir, file);
-      if (fs.existsSync(hostFile)) {
-        const hostMtime = fs.statSync(hostFile).mtimeMs;
-        const groupMtime = fs.existsSync(groupFile)
-          ? fs.statSync(groupFile).mtimeMs
-          : 0;
-        if (hostMtime > groupMtime) {
-          fs.copyFileSync(hostFile, groupFile);
-        }
-      }
-    }
+    // Host is the source of truth — group dir is an ephemeral mirror, container
+    // refreshes live in-group only. Per-group fork divergence is prevented by
+    // overwriting unconditionally on every spawn.
+    seedCodexAuthAndConfig(path.join(os.homedir(), '.codex'), groupSessionsDir);
   }
 
   // Sync skills from container/skills/ into each group's SDK skills dir
