@@ -57,6 +57,7 @@ import {
   formatOutbound,
   stripInternalTags,
 } from './formatting.js';
+import { isAuthExpired, notifyAuthExpired } from './notifications.js';
 import { findChannel } from './router.js';
 import {
   restoreRemoteControl,
@@ -234,6 +235,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
+  let lastErrorText: string | null = null;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -276,6 +278,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
     if (result.status === 'error') {
       hadError = true;
+      if (typeof result.error === 'string') {
+        lastErrorText = result.error;
+      }
     }
   });
 
@@ -294,6 +299,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
     // Roll back cursor so retries can re-process these messages
     rollbackCursor(chatJid, previousCursor);
+    // 401-class auth expiry — skip retry entirely (otherwise the same stale
+    // token gets re-injected on every spawn → infinite loop) and notify
+    // slack_main once. Cursor rollback above means the next inbound message
+    // re-processes everything once the user refreshes credentials.
+    if (lastErrorText && isAuthExpired(lastErrorText)) {
+      await notifyAuthExpired({ group, sdk: group.sdk, channels });
+      logger.warn(
+        { group: group.name, sdk: group.sdk },
+        'Auth expired, retry skipped, notified slack_main',
+      );
+      return true;
+    }
     logger.warn(
       { group: group.name },
       'Agent error, rolled back message cursor for retry',
