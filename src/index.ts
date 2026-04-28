@@ -392,11 +392,20 @@ async function runAgent(
       setSession(group.folder, output.newSessionId);
     }
 
-    // Clean up stale sessions so the next attempt starts fresh
+    // Clean up stale sessions so the next attempt starts fresh.
+    //
+    // Empty error message (`Claude Code returned an error result: ` with
+    // trailing whitespace) was added 2026-04-29 after meeting_notes_mat
+    // sat in an empty-result loop for a full day: a sessionId persisted
+    // in the DB whose corresponding .jsonl on disk had been wiped, and
+    // Claude SDK silently surfaces that as `is_error: true` + empty
+    // message instead of the explicit "no conversation found" string.
+    // Matching `^...:\s*$` lets the next spawn drop the stale id and
+    // start a fresh thread.
     const isStaleSession =
       sessionId &&
       output.error &&
-      /no conversation found|ENOENT.*\.jsonl|session.*not found|no rollout found/i.test(
+      /no conversation found|ENOENT.*\.jsonl|session.*not found|no rollout found|^Claude Code returned an error result:\s*$/i.test(
         output.error,
       );
     if (isStaleSession) {
