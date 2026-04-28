@@ -236,6 +236,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
   let lastErrorText: string | null = null;
+  let pendingMarkerReset = false;
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
@@ -246,17 +247,32 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           : JSON.stringify(result.result);
       const stripped = stripInternalTags(raw);
       // Detect <<AUTO_RESET_SESSIONS>> sentinel — strip from visible text and
-      // fire reset immediately. The previous design deferred the trigger to
-      // the post-loop block below, but a Codex container that stays alive
-      // idle for tens of minutes after its final output (observed 42min on
-      // meeting_notes_pat 2026-04-25) delayed reset by exactly that idle
-      // window. Firing eagerly makes the reset prompt regardless of
-      // container exit timing. Fire-and-forget so streaming continues.
+      // dispatch the reset, but the dispatch timing depends on the SDK:
+      //
+      // - Codex: fire immediately. Codex containers can stay alive idle for
+      //   tens of minutes after their final output (observed 42min on
+      //   meeting_notes_pat 2026-04-25) and a post-loop reset would be
+      //   delayed by that idle window. The streaming-time fire (introduced
+      //   2026-04-25 cd4bdee) makes the reset prompt regardless of exit
+      //   timing.
+      //
+      // - Claude: defer until after the agent run completes. Streaming-time
+      //   reset races the SDK's final thread-state write to disk and
+      //   corrupts conversation state — the next spawn returns
+      //   `is_error: true` with an empty message and the lane is stuck in
+      //   an empty-result loop (observed meeting_notes_mat 2026-04-28).
+      //   Codex doesn't share this failure mode because its session state
+      //   lives in the CLI's mounted ~/.codex/sessions/ via JSONL stream
+      //   that is line-by-line consistent.
       const { text, hasMarker } = stripAutoResetMarker(stripped);
       if (hasMarker && autoResetDepsRef) {
-        autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
-          logger.error({ err, chatJid }, 'Auto session reset failed'),
-        );
+        if (group.sdk === 'codex') {
+          autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
+            logger.error({ err, chatJid }, 'Auto session reset failed'),
+          );
+        } else {
+          pendingMarkerReset = true;
+        }
       }
       logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
       if (text) {
@@ -286,6 +302,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
+
+  // Claude marker reset deferred from streaming time runs here, after the
+  // SDK's final disk writes have settled. Codex took the streaming-time
+  // path above. Fire-and-forget either way.
+  if (pendingMarkerReset && autoResetDepsRef) {
+    autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
+      logger.error(
+        { err, chatJid, sdk: group.sdk },
+        'Auto session reset failed',
+      ),
+    );
+  }
 
   if (output === 'error' || hadError) {
     // If we already sent output to the user, don't roll back the cursor —
