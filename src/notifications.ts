@@ -42,7 +42,7 @@ const notifiedKeys = new Set<string>();
 export function isAuthExpired(errorText: string): boolean {
   const numericMatch =
     /\b40[13]\b/.test(errorText) &&
-    /authentication_error|invalid authentication|unauthorized|oauth/i.test(
+    /authentication_error|invalid authentication|unauthorized|oauth|failed to authenticate/i.test(
       errorText,
     );
   if (numericMatch) return true;

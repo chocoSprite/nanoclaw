@@ -57,6 +57,14 @@ describe('isAuthExpired', () => {
     expect(isAuthExpired('HTTP 401 Unauthorized')).toBe(true);
   });
 
+  it('matches Claude SDK short-form 401 (no JSON body)', () => {
+    // Real stderr captured 2026-04-28: shorter than the JSON form, only
+    // "Failed to authenticate. API Error: 401 terminated".
+    const stderr =
+      'Result #1: Failed to authenticate. API Error: 401 terminated';
+    expect(isAuthExpired(stderr)).toBe(true);
+  });
+
   it('matches Codex-style oauth failure (spec)', () => {
     expect(
       isAuthExpired(
