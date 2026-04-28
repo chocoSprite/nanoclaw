@@ -37,19 +37,38 @@ describe('seedCodexAuthAndConfig', () => {
     );
   });
 
-  it('overwrites group copy even when group file is newer (host-wins)', () => {
-    fs.writeFileSync(path.join(hostCodex, 'auth.json'), 'host-auth');
+  it('preserves group copy when group file is strictly newer (codex refresh-token rotation safe)', () => {
+    fs.writeFileSync(path.join(hostCodex, 'auth.json'), 'STALE-host-auth');
     const groupFile = path.join(groupCodex, 'auth.json');
-    fs.writeFileSync(groupFile, 'GROUP-NEWER-COPY');
-    // Make group file's mtime strictly newer than host file's. Without this,
-    // file-system mtime granularity can leave the two equal and accidentally
-    // satisfy a (now-removed) host>group check.
+    fs.writeFileSync(groupFile, 'group-rotated-by-container');
+    // Group mtime strictly newer simulates the post-spawn state: the
+    // in-container codex CLI just performed an OAuth refresh and the
+    // rotated refresh_token lives only in the group copy. Re-injecting
+    // the host's now-stale (already-used) token would cause the next
+    // spawn to fail with "refresh token already used".
     const newer = new Date(Date.now() + 60_000);
     fs.utimesSync(groupFile, newer, newer);
 
     seedCodexAuthAndConfig(hostCodex, groupCodex);
 
-    expect(fs.readFileSync(groupFile, 'utf8')).toBe('host-auth');
+    expect(fs.readFileSync(groupFile, 'utf8')).toBe(
+      'group-rotated-by-container',
+    );
+  });
+
+  it('overwrites group copy when host file is strictly newer (user re-login)', () => {
+    const groupFile = path.join(groupCodex, 'auth.json');
+    fs.writeFileSync(groupFile, 'old-group-auth');
+    const olderTs = new Date(Date.now() - 60_000);
+    fs.utimesSync(groupFile, olderTs, olderTs);
+
+    fs.writeFileSync(path.join(hostCodex, 'auth.json'), 'fresh-host-auth');
+    // Host mtime is "now" via writeFileSync, strictly newer than group's
+    // backdated mtime above.
+
+    seedCodexAuthAndConfig(hostCodex, groupCodex);
+
+    expect(fs.readFileSync(groupFile, 'utf8')).toBe('fresh-host-auth');
   });
 
   it('skips files that do not exist on host', () => {

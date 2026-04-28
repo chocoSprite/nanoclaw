@@ -18,9 +18,17 @@ export interface VolumeMount {
 }
 
 /**
- * Copy host ~/.codex/{auth.json,config.toml} into the group sessions dir,
- * unconditionally overwriting any existing group copy. Host is the source of
- * truth; container-side refreshes are ephemeral and reset on next spawn.
+ * Seed host ~/.codex/{auth.json,config.toml} into the group sessions dir,
+ * but only when the host file is strictly newer than the group copy. The
+ * group copy must be preserved otherwise, because Codex's OAuth refresh
+ * rotates the refresh_token on every use and the rotated value lives only
+ * in whichever copy the container last wrote to. Unconditional host-wins
+ * (the prior 2026-04-27 attempt) re-injected a stale, already-used
+ * refresh_token on every spawn and the OpenAI server rejected it with
+ * "refresh token was already used" — no 401 numeric, so the Wedge 2
+ * notifier missed it and the retry loop went unbounded. Reverting to
+ * mtime-gated copy keeps fork divergence as a cosmetic concern (the
+ * original Wedge 1 motive) but preserves rotation correctness.
  */
 export function seedCodexAuthAndConfig(
   hostCodexDir: string,
@@ -29,7 +37,12 @@ export function seedCodexAuthAndConfig(
   for (const file of ['auth.json', 'config.toml']) {
     const hostFile = path.join(hostCodexDir, file);
     const groupFile = path.join(groupSessionsDir, file);
-    if (fs.existsSync(hostFile)) {
+    if (!fs.existsSync(hostFile)) continue;
+    const hostMtime = fs.statSync(hostFile).mtimeMs;
+    const groupMtime = fs.existsSync(groupFile)
+      ? fs.statSync(groupFile).mtimeMs
+      : 0;
+    if (hostMtime > groupMtime) {
       fs.copyFileSync(hostFile, groupFile);
     }
   }

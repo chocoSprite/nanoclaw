@@ -65,6 +65,30 @@ describe('isAuthExpired', () => {
     ).toBe(true);
   });
 
+  it('matches codex natural-language refresh-token rejection (2026-04-28)', () => {
+    // Real stderr captured from meeting_notes_pat infinite-retry incident.
+    // Note: no 4xx digit anywhere in the message — pure natural language.
+    const stderr =
+      'Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.';
+    expect(isAuthExpired(stderr)).toBe(true);
+  });
+
+  it('matches "invalid_grant" OAuth error code', () => {
+    expect(isAuthExpired('error=invalid_grant; refresh failed')).toBe(true);
+  });
+
+  it('matches "please run `codex login`" hint phrasing', () => {
+    expect(
+      isAuthExpired('auth setup expired — please run `codex login` to reauth'),
+    ).toBe(true);
+  });
+
+  it('matches "please run `claude setup-token`" hint phrasing', () => {
+    expect(
+      isAuthExpired('credential expired — please re-run claude setup-token'),
+    ).toBe(true);
+  });
+
   it('returns false for 429 rate-limit', () => {
     expect(isAuthExpired('HTTP 429 Too Many Requests')).toBe(false);
   });
