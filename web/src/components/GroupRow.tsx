@@ -76,7 +76,7 @@ export function GroupRow({ group }: Props) {
       <span className="hidden min-w-[6.5rem] shrink-0 text-right font-mono text-[11px] text-muted-foreground sm:inline">
         {group.sdk === 'claude'
           ? (modelLabel ?? '기본')
-          : CODEX_DEFAULT_MODEL_DISPLAY}
+          : (modelLabel ?? CODEX_DEFAULT_MODEL_DISPLAY)}
       </span>
 
       <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
