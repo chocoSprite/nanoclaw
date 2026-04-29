@@ -305,14 +305,19 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // Claude marker reset deferred from streaming time runs here, after the
   // SDK's final disk writes have settled. Codex took the streaming-time
-  // path above. Fire-and-forget either way.
+  // path above. Awaited (not fire-and-forget) so the next queued spawn for
+  // this group cannot read the stale sessionId out of state.sessions or
+  // the DB before reset has cleared them — that race is what kept
+  // meeting_notes_mat trapped in an empty-result loop across 2026-04-28.
   if (pendingMarkerReset && autoResetDepsRef) {
-    autoResetPairedLanes(chatJid, autoResetDepsRef).catch((err) =>
+    try {
+      await autoResetPairedLanes(chatJid, autoResetDepsRef);
+    } catch (err) {
       logger.error(
         { err, chatJid, sdk: group.sdk },
         'Auto session reset failed',
-      ),
-    );
+      );
+    }
   }
 
   if (output === 'error' || hadError) {
